@@ -106,6 +106,11 @@ export function fastwebWindows(width: number, height: number): FastwebWindow[] {
   }
   return windows;
 }
+/** Scheduling profile only; model preprocessing and corner validation are identical. */
+export function proposalWindows(width: number, height: number, profile: "full" | "pack" = "full"): FastwebWindow[] {
+  if (profile !== "full" && profile !== "pack") throw new Error("Invalid proposal profile.");
+  return profile === "pack" ? [[0, 0, width, height]] : fastwebWindows(width, height);
+}
 /** Unlike XFeat, Fastweb resizes uint8 RGB before float32 ImageNet normalization. */
 function preprocessFastwebMat(cv: Cv, image: OpenCv.Mat, window: FastwebWindow): Float32Array {
   const [x0, y0, x1, y1] = window;
@@ -248,11 +253,11 @@ export async function createLearnedModelsFromAssets(cv: Cv, assets: LearnedAsset
         return result;
       } finally { input.dispose(); if (outputs) for (const tensor of Object.values(outputs)) tensor.dispose(); }
     }),
-    propose: image => serialized(async () => {
+    propose: (image, profile = "full") => serialized(async () => {
       validateImage(image);
       const source = cv.matFromImageData(image), kept: Quad[] = [];
       try {
-        for (const window of fastwebWindows(image.width, image.height)) {
+        for (const window of proposalWindows(image.width, image.height, profile)) {
           abort(options.signal);
           const input = new ort.Tensor("float32", preprocessFastwebMat(cv, source, window), [1, 3, 384, 384]);
           let outputs: ort.InferenceSession.OnnxValueMapType | undefined;

@@ -94,7 +94,7 @@ export interface CardDetection {
 export interface VisionInitializeOptions { matcher?: "orb" | "learned"; game?: VisionGame }
 export interface VisionOptions {
   /** Photo uses the entire frozen automatic proposal protocol and a larger budget. */
-  mode?: "stream" | "binder" | "photo";
+  mode?: "stream" | "binder" | "photo" | "pack";
   game?: VisionGame;
   maxCards?: number;
   includeCrops?: boolean;
@@ -112,7 +112,7 @@ export interface VisionOptions {
   /** Opt-in preview scheduling only; default remains three identity observations. */
   previewBurstObservations?: 1 | 3;
 }
-export interface VisionTimings { detectionMs: number; extractionMs: number; matchingMs: number; totalMs: number; descriptorMatchingMs?: number; geometryMs?: number; referenceReadMs?: number }
+export interface VisionTimings { detectionMs: number; extractionMs: number; matchingMs: number; totalMs: number; descriptorMatchingMs?: number; geometryMs?: number; referenceReadMs?: number; xfeatPreprocessingMs?: number; xfeatInferenceMs?: number; xfeatPostprocessingMs?: number }
 export interface VisionResult {
   width: number;
   height: number;

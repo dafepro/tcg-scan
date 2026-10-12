@@ -39,7 +39,7 @@ export interface LearnedQueryFeatures {
 
 export interface LearnedModels {
   extract(image: ImageData): Promise<LearnedQueryFeatures>;
-  /** Frozen full-frame + 3 x 3 half-frame proposal protocol. */
-  propose(image: ImageData): Promise<Quad[]>;
+  /** Default remains the frozen full-frame + 3 x 3 protocol. Pack explicitly uses one whole-frame inference. */
+  propose(image: ImageData, profile?: "full" | "pack"): Promise<Quad[]>;
   dispose(): void | Promise<void>;
 }

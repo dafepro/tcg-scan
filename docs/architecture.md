@@ -11,6 +11,16 @@
 
 The browser worker accepts one in-flight operation. A separate bounded sampler keeps compact real gray captures while identity inference runs, with at most one full-resolution input and one recycled spare. A current-view commit requires the newest completed capture and is withheld while a newer source readback is in flight. Advancing native presented-frame metadata establishes source freshness independently of readback timestamps; source identity/usability and native presentation age are rechecked at commit. Fixed area/binomial gray preprocessing prevents nearest-neighbor sampling alias from masquerading as card motion, without changing the continuity or identity rejection thresholds. Ordered gray replay has fixed sample, byte, gap and duration limits; overflow invalidates evidence rather than dropping intermediate samples. Pause, hidden tabs, stop, navigation, game changes and unmount prevent late saves. Video and overlays share the same full-frame geometry without CSS cover-cropping or mirroring.
 
+## Moving pack capture
+
+`PackScanner` is a separate workflow rather than a weaker live-view proof. `pack-capture.ts` acquires native, source-validated RGBA frames through the same direct-video transport, then transfers ownership into an immutable queue with at most 12 retained views and 48 MiB of queued/in-flight pixel data. This limit excludes models, browser surfaces and small capture/recycling buffers. Image signatures only schedule redundant views; they never establish identity or a physical copy. Queue omissions and overflow are visible.
+
+The learned `pack` profile makes one fresh full-frame corner proposal per view and completes all eight shortlisted rivals on those same pixels. It preserves the existing XFeat, mutual-nearest, geometry, artwork-support and distinct-identity rejection gates. Unlike live overlays, a receipt can finish after the original card leaves view because the evidence is the immutable captured image. No delayed result is drawn as a success box over a newer card.
+
+`pack-session.ts` keeps capture lineage, recognition identity and durable event IDs separate. One identity is counted once per pack, even after another identity intervenes. This intentionally undercounts indistinguishable duplicate copies rather than treating motion or a gap as proof of another copy. Failed durable writes never become Saved; retry reuses the same event, and Undo leaves the identity latch in place. Receipt history is bounded while protected save/error/undo records and identity latches are retained.
+
+One worker handles inference. Pause holds an already-completed result until an explicit valid Resume; hidden pages pause. Stop, source replacement, native track interruption and unmount invalidate pending saves and release pixels/workers. Natural local-video completion and explicit Finish drain already acquired views. See [pack workflow and measured evidence](pack-opening.md).
+
 ## Reference data
 
 `learned-packs.ts` validates checksummed binary feature records plus metadata, transactionally stages imports, marks only complete packs ready, and reads descriptor blocks lazily with an eight-reference LRU. The initial index contains no descriptor arrays. Interrupted/corrupt packs cannot be loaded.

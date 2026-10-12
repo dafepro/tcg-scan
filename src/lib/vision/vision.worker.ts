@@ -161,6 +161,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "clear": if (!(local instanceof VisionEngine)) throw new Error("Restart the learned session after changing its local packs."); result = local.clear(); break;
       case "add-reference": if (!(local instanceof VisionEngine)) throw new Error("Session photo references are supported only by the legacy ORB matcher."); result = local.addReference(message.reference, readPixels(message.image)); break;
       case "analyze": {
+        if (message.options.mode === "pack" && configuration.matcher !== "learned") throw new Error("Pack capture requires the learned verifier.");
         const analyzed = await local.analyze(readPixels(message.image), message.options);
         collectCropTransfers(analyzed.detections, frameBuffer, transfers);
         result = analyzed; break;

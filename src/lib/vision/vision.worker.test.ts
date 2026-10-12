@@ -81,6 +81,12 @@ describe("serialized worker learned startup", () => {
     expect(dispose).toHaveBeenCalledOnce(); expect(mocks.constructor).not.toHaveBeenCalled();
     expect(w.scope.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({ id: 1, error: "Corrupt local index" });
   });
+  it("rejects the pack protocol in a legacy ORB worker", async () => {
+    const w = await worker(); await w.request({ id: 1, type: "initialize" });
+    await w.request({ id: 2, type: "analyze", image: { width: 2, height: 2, data: new Uint8ClampedArray(16) }, options: { mode: "pack" } });
+    expect(mocks.analyze).not.toHaveBeenCalled();
+    expect(w.scope.postMessage.mock.calls.at(-1)?.[0].error).toContain("learned verifier");
+  });
   it("keeps no-argument sessions on ORB with no learned model imports or index reads", async () => {
     const w = await worker(); await w.request({ id: 1, type: "initialize" });
     expect(mocks.orbConstructor).toHaveBeenCalledOnce(); expect(mocks.createModels).not.toHaveBeenCalled(); expect(mocks.loadIndex).not.toHaveBeenCalled();

@@ -232,7 +232,7 @@ export class LearnedVisionEngine {
     if (!Number.isInteger(image.width) || !Number.isInteger(image.height) || image.width < 2 || image.height < 2 || image.width > 4096 || image.height > 4096 || image.width * image.height > 16_000_000 || image.data.length !== image.width * image.height * 4) throw new Error("Frame must be RGBA and at most 4096 pixels per side / 16 million pixels.");
     if (options.region) throw new Error("Learned recognition requires the automatic whole-photo protocol; manual regions are not supported.");
     if (options.printingRegions && (options.printingRegions.length > 2 || options.printingRegions.some(q => q.length !== 4 || !isConvexQuad(q) || q.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= image.width || p.y >= image.height)))) throw new Error("Printing crop targets must be at most two convex quadrilaterals inside the frame.");
-    const version = this.invalidation, start = performance.now(), photo = options.mode === "photo";
+    const version = this.invalidation, start = performance.now(), photo = options.mode === "photo", pack = options.mode === "pack";
     if (options.previewBurstObservations !== undefined && options.previewBurstObservations !== 1 && options.previewBurstObservations !== 3) throw new Error("Preview identity scheduling must use one or three fresh observations.");
     const burstObservations = options.previewBurstObservations ?? 3;
     const context = `${options.mode ?? "stream"}:${options.game ?? "all"}:${image.width}x${image.height}:${burstObservations}`;
@@ -245,9 +245,12 @@ export class LearnedVisionEngine {
     try {
       // maxCards never truncates automatic learned proposals. Frozen contour cap9
       // and every retained Fastweb hypothesis are grouped before any scheduling.
-      const contours = this.preprocessing.detect(source, 9);
+      // Pack is an explicit single-card protocol: one fresh whole-frame proposal.
+      // Other modes retain every frozen contour and all ten Fastweb windows.
+      const contours = pack ? [] : this.preprocessing.detect(source, 9);
       let fastweb: Quad[] | undefined;
-      if (photo) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image); this.assertCurrent(version); }
+      if (pack) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image, "pack"); this.assertCurrent(version); }
+      else if (photo) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image); this.assertCurrent(version); }
       else {
         const cached = this.cadence.inspect(image, performance.now());
         if (!cached.quads) { this.burstFrames = 0; this.previousGroups = undefined; }
@@ -259,10 +262,10 @@ export class LearnedVisionEngine {
         result.detectionComplete = false;
         result.detections = contours.map(q => deferred(q, "Motion invalidated corner proposals; waiting for the next complete local detector pass.")); result.scheduling!.deferredGroups = contours.length; result.budgetExhausted = true; return result;
       }
-      if (fastweb.length > 10 || fastweb.some(q => q.length !== 4 || !isConvexQuad(q) || q.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= image.width || p.y >= image.height))) throw new Error("Invalid learned corner proposals.");
+      if (fastweb.length > (pack ? 1 : 10) || fastweb.some(q => q.length !== 4 || !isConvexQuad(q) || q.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= image.width || p.y >= image.height))) throw new Error("Invalid learned corner proposals.");
       const quads = [...contours, ...fastweb], groups = groupLearnedQuads(quads, (a, b) => learnedPolygonIoU(this.cv, a, b));
       result.timings.detectionMs = performance.now() - start;
-      if (!photo) {
+      if (!photo && !pack) {
         const current = groups.map(g => g.map(i => quads[i]));
         // Geometry only, never previous identity/descriptor evidence. A changed
         // component membership/order or loss of the same physical region resets
@@ -271,8 +274,8 @@ export class LearnedVisionEngine {
         if (!same) this.burstFrames = 0;
         this.previousGroups = current;
       }
-      const offset = photo ? 0 : this.groupCursor % Math.max(1, groups.length);
-      if (!photo && groups.length) {
+      const offset = photo || pack ? 0 : this.groupCursor % Math.max(1, groups.length);
+      if (!photo && !pack && groups.length) {
         const focused = groups[offset].map(i => quads[i]);
         if (this.focusQuad && !focused.some(q => learnedPolygonIoU(this.cv, q, this.focusQuad!) >= .70)) this.focusAttempts = 0;
         this.focusQuad = focused[0];
@@ -286,7 +289,7 @@ export class LearnedVisionEngine {
         // A separate three-completed-attempt work cap survives evidence resets,
         // so slow groups cannot starve others. It carries no identity evidence.
         // One indivisible group may exceed the soft budget; others stay deferred.
-        if ((!photo && groupIndex > 0) || (photo && performance.now() > deadline)) { result.detections.push(decideLearnedGroup(group.map(i => deferred(quads[i])), options.includeDiagnostics)); result.budgetExhausted = true; continue; }
+        if ((!photo && !pack && groupIndex > 0) || (photo && performance.now() > deadline)) { result.detections.push(decideLearnedGroup(group.map(i => deferred(quads[i])), options.includeDiagnostics)); result.budgetExhausted = true; continue; }
         for (const index of group) {
           this.assertCurrent(version);
           const quad = quads[index], extractionStart = performance.now(), prepared = this.preprocessing.prepareLearnedCrop(source, quad);
@@ -296,6 +299,11 @@ export class LearnedVisionEngine {
           const detection: CardDetection = { quad, state: "unknown", autoEligible: false, quality, candidates: [], reason: "No reference passed local verification." };
           if (options.includeCrops) detection.crop = prepared.image;
           result.timings.extractionMs += performance.now() - extractionStart;
+          if (query.timings) {
+            result.timings.xfeatPreprocessingMs = (result.timings.xfeatPreprocessingMs ?? 0) + query.timings.preprocessingMs;
+            result.timings.xfeatInferenceMs = (result.timings.xfeatInferenceMs ?? 0) + query.timings.inferenceMs;
+            result.timings.xfeatPostprocessingMs = (result.timings.xfeatPostprocessingMs ?? 0) + query.timings.postprocessingMs;
+          }
           const matchingStart = performance.now(), retrievalStart = performance.now();
           // The frozen driver supplied no shortlist when original quality failed.
           const shortlist = prepared.quality.issues.length ? [] : this.index.query(prepared.hashes, options.game ? [options.game] : ["pokemon", "mtg", "yugioh"], 8);
@@ -351,7 +359,7 @@ export class LearnedVisionEngine {
         }
       }
       result.scheduling!.processedGroups = result.detections.filter(d => !d.deferred).length; result.scheduling!.deferredGroups = result.detections.filter(d => d.deferred).length;
-      if (!photo && result.scheduling!.processedGroups > 0) {
+      if (!photo && !pack && result.scheduling!.processedGroups > 0) {
         this.burstFrames++; this.focusAttempts++;
         result.scheduling!.burstFrame = this.burstFrames;
         result.scheduling!.focusAttempt = this.focusAttempts;

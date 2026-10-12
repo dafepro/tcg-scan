@@ -25,6 +25,36 @@ export class CaptureFreshnessError extends Error {
   }
 }
 
+export interface CaptureFrameExpiry {
+  readonly stage: "callback" | "before-copy" | "after-copy";
+  readonly checkedAt: number;
+  readonly callbackAgeMs: number;
+  readonly presentationAgeMs: number;
+  readonly sourceFrame: Readonly<SourceFrame>;
+}
+
+/** Only an otherwise valid native acquisition that aged out may be discarded
+ * and retried by Pack mode. This error owns metadata, never pixels or surfaces. */
+export class CaptureFrameExpiredError extends CaptureFreshnessError {
+  readonly expiry: CaptureFrameExpiry;
+  constructor(stage: CaptureFrameExpiry["stage"], source: SourceFrame, checkedAt: number) {
+    super("The camera supplied a stale frame callback. Restart the camera.");
+    this.name = "CaptureFrameExpiredError";
+    this.expiry = Object.freeze({
+      stage,
+      checkedAt,
+      callbackAgeMs: checkedAt - source.callbackAt,
+      presentationAgeMs: checkedAt - source.presentationTime,
+      sourceFrame: Object.freeze({
+        presentedFrames: source.presentedFrames,
+        mediaTime: source.mediaTime,
+        presentationTime: source.presentationTime,
+        callbackAt: source.callbackAt,
+      }),
+    });
+  }
+}
+
 export class CaptureCompatibilityError extends Error {
   constructor() {
     super(
@@ -89,6 +119,9 @@ export class FrameCapture {
   private source?: CaptureSource;
   private sourceChanged = false;
   private lastSourceFrame?: SourceFrame;
+  /** Includes age-discarded callbacks, without refreshing live-current proof. */
+  private lastObservedSourceFrame?: SourceFrame;
+  private lastFrameCheckAt = -Infinity;
   private cancelFrameWait?: (error: Error) => void;
   private readonly dependencies: CaptureDependencies;
 
@@ -189,22 +222,34 @@ export class FrameCapture {
       );
   }
 
-  private assertFreshSourceFrame(frame: SourceFrame) {
+  private assertFreshSourceFrame(frame: SourceFrame, stage?: CaptureFrameExpiry["stage"]) {
     const now = this.dependencies.frameNow();
+    if (!Number.isFinite(now) || now < 0)
+      throw new CaptureFreshnessError("The native frame clock is invalid. Restart the camera.");
     if (
-      !Number.isFinite(now) ||
       !Number.isFinite(frame.callbackAt) ||
       !Number.isFinite(frame.presentationTime) ||
       frame.callbackAt < 0 ||
-      frame.presentationTime < 0 ||
-      now < frame.callbackAt ||
-      now < frame.presentationTime ||
-      now - frame.callbackAt > SOURCE_MAX_AGE_MS ||
-      now - frame.presentationTime > SOURCE_MAX_AGE_MS
+      frame.presentationTime < 0
     )
-      throw new CaptureFreshnessError(
-        "The camera supplied a stale frame callback. Restart the camera.",
-      );
+      throw new CaptureFreshnessError("The camera supplied invalid native frame timestamps. Restart the camera.");
+    if (now < this.lastFrameCheckAt)
+      throw new CaptureFreshnessError("The native frame clock regressed. Restart the camera.");
+    if (now < frame.callbackAt || now < frame.presentationTime)
+      throw new CaptureFreshnessError("The camera supplied future native frame timestamps. Restart the camera.");
+    if (stage === "callback") {
+      const previous = this.lastObservedSourceFrame;
+      if (previous && (frame.callbackAt < previous.callbackAt || frame.presentationTime < previous.presentationTime))
+        throw new CaptureFreshnessError("The camera regressed its native frame timestamps. Restart the camera.");
+      // Consume an otherwise valid identity even when its age will reject it.
+      // A later callback cannot relabel these discarded pixels as a new frame.
+      this.lastObservedSourceFrame = frame;
+    }
+    this.lastFrameCheckAt = now;
+    if (now - frame.callbackAt > SOURCE_MAX_AGE_MS || now - frame.presentationTime > SOURCE_MAX_AGE_MS) {
+      if (stage) throw new CaptureFrameExpiredError(stage, frame, now);
+      throw new CaptureFreshnessError("The camera supplied a stale frame callback. Restart the camera.");
+    }
   }
 
   private waitForSourceFrame(video: HTMLVideoElement): Promise<SourceFrame> {
@@ -257,7 +302,7 @@ export class FrameCapture {
               presentationTime: metadata.presentationTime,
               callbackAt,
             });
-            const previous = this.lastSourceFrame;
+            const previous = this.lastObservedSourceFrame;
             if (
               !Number.isSafeInteger(frame.presentedFrames) ||
               frame.presentedFrames < 1 ||
@@ -270,7 +315,7 @@ export class FrameCapture {
               throw new CaptureFreshnessError(
                 "The camera repeated or regressed a source frame. Restart the camera.",
               );
-            this.assertFreshSourceFrame(frame);
+            this.assertFreshSourceFrame(frame, "callback");
             // Consume the identity before readback, even if copyTo later fails.
             this.lastSourceFrame = frame;
             settled = true;
@@ -312,7 +357,7 @@ export class FrameCapture {
         : await this.waitForSourceFrame(video);
       const capture = async (): Promise<CapturedPixels> => {
         this.assertSource(video);
-        if (!this.compatibility) this.assertFreshSourceFrame(sourceFrame!);
+        if (!this.compatibility) this.assertFreshSourceFrame(sourceFrame!, "before-copy");
         const capturedAt = this.dependencies.now();
         if (this.compatibility && capturedAt - this.lastCapture < 1000)
           throw new CaptureRateLimitError();
@@ -384,7 +429,6 @@ export class FrameCapture {
             throw new Error("Camera pixel buffer has an invalid size.");
           const layout = await frame.copyTo(buffer, options);
           this.assertSource(video);
-          this.assertFreshSourceFrame(sourceFrame!);
           if (
             layout.length !== 1 ||
             layout[0].offset !== 0 ||
@@ -393,6 +437,7 @@ export class FrameCapture {
             throw new Error(
               "The browser returned an unexpected camera pixel layout.",
             );
+          this.assertFreshSourceFrame(sourceFrame!, "after-copy");
           this.lastCapture = capturedAt;
           return {
             image: { width, height, data: new Uint8ClampedArray(buffer) },
@@ -438,6 +483,7 @@ export class FrameCapture {
     this.source?.video.removeEventListener("loadstart", this.invalidateSource);
     this.source = undefined;
     this.lastSourceFrame = undefined;
+    this.lastObservedSourceFrame = undefined;
     if (this.canvas) this.canvas.width = this.canvas.height = 0;
     this.canvas = undefined;
   }

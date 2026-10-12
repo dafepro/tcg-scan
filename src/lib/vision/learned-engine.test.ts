@@ -365,4 +365,33 @@ describe("persistent learned engine lazy access and lifecycle", () => {
     } finally { clock.mockRestore(); await f.engine.dispose(); }
   });
 
+  it("pack uses a fresh single-window proposal and all eight rivals even beyond its soft budget", async () => {
+    const f = await fixture(), detector = vi.spyOn(VisionEngine.prototype, "detect"), clock = vi.spyOn(performance, "now");
+    let time = 0; clock.mockImplementation(() => time += 100);
+    f.models.extract = vi.fn(async () => ({ ...queryFor(f.refs[0]), timings: { preprocessingMs: 2, inferenceMs: 3, postprocessingMs: 4, totalMs: 9 } }));
+    try {
+      const first = await f.engine.analyze(f.image, { mode: "pack", budgetMs: 80, includeDiagnostics: true });
+      const second = await f.engine.analyze(translate(f.image, 32, 0), { mode: "pack", budgetMs: 80, includeDiagnostics: true });
+      expect(detector).not.toHaveBeenCalled(); expect(f.models.propose).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(f.models.propose).mock.calls.every(call => call[1] === "pack")).toBe(true);
+      for (const result of [first, second]) {
+        expect(result.detectionComplete).toBe(true); expect(result.budgetExhausted).toBe(false);
+        expect(result.scheduling).toMatchObject({ proposalRefresh: true, proposalCacheReused: false, processedGroups: 1, deferredGroups: 0 });
+        expect(result.detections[0].hypotheses![0].candidates).toHaveLength(8);
+        expect(result.timings).toMatchObject({ xfeatPreprocessingMs: 2, xfeatInferenceMs: 3, xfeatPostprocessingMs: 4 });
+      }
+      expect(f.load).toHaveBeenCalledTimes(16); expect(f.models.extract).toHaveBeenCalledTimes(2);
+    } finally { detector.mockRestore(); clock.mockRestore(); await f.engine.dispose(); }
+  });
+  it("pack rejects extra detector hypotheses and fails closed if any rival is unreadable", async () => {
+    const f = await fixture();
+    try {
+      f.models.propose = vi.fn(async () => [quad(200, 90, 239, 335), quad(10, 10)]);
+      await expect(f.engine.analyze(f.image, { mode: "pack" })).rejects.toThrow("Invalid learned corner proposals");
+      f.models.propose = vi.fn(async () => [quad(200, 90, 239, 335)]);
+      f.load.mockRejectedValueOnce(new Error("Corrupt reference"));
+      await expect(f.engine.analyze(f.image, { mode: "pack" })).rejects.toThrow("Corrupt reference");
+    } finally { await f.engine.dispose(); }
+  });
+
 });

@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it, vi, afterEach } from "vitest";
 import type * as OpenCv from "@techstark/opencv-js";
 import {
   createLearnedModels, createLearnedModelsFromAssets, createLearnedSimilarity, decodeXFeatOutputs, fastwebQuad,
-  fastwebWindows, learnedPolygonIoU, LEARNED_ASSETS, preprocessFastweb,
+  fastwebWindows, proposalWindows, learnedPolygonIoU, LEARNED_ASSETS, preprocessFastweb,
   preprocessXFeat, roundEven, sampleXFeatDescriptors, verifyLearnedAsset,
 } from "./learned-models";
 import type { LearnedAssetBytes } from "./learned-models";
@@ -42,6 +42,11 @@ describe("frozen learned preprocessing and postprocessing", () => {
     expect([.5, 1.5, 2.5, 3.5].map(roundEven)).toEqual([0, 2, 2, 4]);
     expect([-.5, -1.5, -2.5, -3.5].map(roundEven)).toEqual([0, -2, -2, -4]);
     expect(fastwebWindows(5, 7)).toEqual([[0, 0, 5, 7], [0, 0, 2, 4], [1, 0, 4, 4], [2, 0, 5, 4], [0, 2, 2, 5], [1, 2, 4, 5], [2, 2, 5, 5], [0, 4, 2, 7], [1, 4, 4, 7], [2, 4, 5, 7]]);
+  });
+  it("isolates the one-whole-frame pack profile from the unchanged ten-window protocol", () => {
+    expect(proposalWindows(641, 479, "pack")).toEqual([[0, 0, 641, 479]]);
+    expect(proposalWindows(641, 479)).toEqual(fastwebWindows(641, 479));
+    expect(proposalWindows(641, 479, "full")).toHaveLength(10);
   });
   it("does not decode the graph heatmap twice; NMS5, strict float32 .05, origin excluded", () => {
     const { dense, heat, reliability } = outputs();

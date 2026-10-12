@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import Scanner from "./components/Scanner";
 import ContinuousScanner from "./components/ContinuousScanner";
+import PackScanner from "./components/PackScanner";
 import { ReferenceQuotes } from "./components/ReferenceQuotes";
 import {
   addScanEvent,
@@ -115,6 +116,7 @@ export default function App() {
   const storageSnapshot = useRef<string | null | undefined>(undefined);
   const [view, setView] = useState<View>("scan");
   const [game, setGame] = useState<Game>("pokemon");
+  const [captureFlow, setCaptureFlow] = useState<"live" | "pack">("live");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Card[]>([]);
   const [searching, setSearching] = useState(false);
@@ -473,13 +475,43 @@ export default function App() {
             </div>
             <div className="scan-workspace">
               <div className="scan-main-column">
-                <ContinuousScanner
-                  key={game}
-                  game={game}
-                  onSave={saveScan}
-                  onUndo={undoScan}
-                  onPrinting={refinePrinting}
-                />
+                <div
+                  className="capture-flow-tabs"
+                  role="group"
+                  aria-label="Scanning workflow"
+                >
+                  <button
+                    className={captureFlow === "live" ? "selected" : ""}
+                    aria-pressed={captureFlow === "live"}
+                    onClick={() => setCaptureFlow("live")}
+                  >
+                    Live cards / binder
+                  </button>
+                  <button
+                    className={captureFlow === "pack" ? "selected" : ""}
+                    aria-pressed={captureFlow === "pack"}
+                    onClick={() => setCaptureFlow("pack")}
+                  >
+                    Pack opening
+                  </button>
+                </div>
+                {captureFlow === "live" ? (
+                  <ContinuousScanner
+                    key={game}
+                    game={game}
+                    onSave={saveScan}
+                    onUndo={undoScan}
+                    onPrinting={refinePrinting}
+                  />
+                ) : (
+                  <PackScanner
+                    key={game}
+                    game={game}
+                    onSave={saveScan}
+                    onUndo={undoScan}
+                    onSetup={() => setCaptureFlow("live")}
+                  />
+                )}
                 <details className="assisted-scan">
                   <summary>
                     Assisted photo / text scan · for cards outside your local

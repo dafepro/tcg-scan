@@ -13,17 +13,20 @@
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
-    "postinstall": "node scripts/prepare-ocr.mjs",
-    "predev": "node scripts/prepare-ocr.mjs",
-    "prebuild": "node scripts/prepare-ocr.mjs",
+    "postinstall": "npm run prepare:assets",
+    "predev": "npm run prepare:assets",
+    "prebuild": "npm run prepare:assets",
     "build:index": "node --import tsx scripts/build-index.mjs",
     "benchmark:vision": "node --import tsx scripts/benchmark-vision.ts",
-    "evaluate:photos": "node --import tsx scripts/evaluate-photos.ts"
+    "evaluate:photos": "node --import tsx scripts/evaluate-photos.ts",
+    "prepare:assets": "node scripts/prepare-ocr.mjs && node scripts/prepare-vision-models.mjs",
+    "build:learned-index": "node --import tsx scripts/build-learned-index.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "5.0.0-release.1",
     "@tesseract.js-data/eng": "1.0.0",
     "lucide-react": "^0.468.0",
+    "onnxruntime-web": "1.30.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tesseract.js": "6.0.1"

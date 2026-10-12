@@ -258,10 +258,10 @@ p {
   max-width: 670px;
 }
 .scan-heading {
-  margin-bottom: 34px;
+  margin-bottom: 22px;
 }
 .scan-heading h1 {
-  font-size: 42px;
+  font-size: 34px;
 }
 .hero-stat {
   border-left: 1px solid var(--border);
@@ -1567,7 +1567,7 @@ p {
     padding-top: 29px;
   }
   .scan-heading h1 {
-    font-size: 37px;
+    font-size: 30px;
   }
   .hero-stat {
     padding-left: 24px;
@@ -2095,4 +2095,57 @@ p,
 .art-placeholder > svg,
 .art-placeholder > small {
   flex-shrink: 0;
+}
+
+/* Camera-first mobile heading: keep setup and controls above the fold. */
+@media (max-width: 520px) {
+  .scan-heading {
+    display: block;
+    margin-bottom: 18px;
+  }
+  .scan-heading .eyebrow {
+    display: none;
+  }
+  .scan-heading h1 {
+    font-size: 27px;
+    line-height: 1.15;
+    letter-spacing: -0.8px;
+  }
+  .scan-heading h1 br {
+    display: none;
+  }
+  .scan-heading .page-intro {
+    max-width: none;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .scan-heading .hero-stat {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    border: 0;
+    padding: 9px 0 0;
+    max-width: none;
+    min-width: 0;
+  }
+  .scan-heading .hero-stat > svg {
+    display: none;
+  }
+  .scan-heading .hero-stat strong {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  .scan-heading .hero-stat > span {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .scan-heading .hero-stat button {
+    margin: 0 0 0 auto;
+    font-size: 11px;
+    line-height: 1.3;
+    min-height: 30px;
+  }
 }

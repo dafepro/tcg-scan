@@ -20,3 +20,9 @@ Test your host’s CSP with an actual visual and OCR scan before enabling it; We
 The OpenCV worker is bundled into hashed assets (about 15.5 MB uncompressed / 3.9 MB gzip in the measured build). Enable HTTP compression for JavaScript and JSON reference shards. Whole-game packs are separate one-time downloads/imports and can be large; preserve exact checksums rather than rewriting JSON. A first source-only install has zero visual references until a pack is installed. See [reference packs](reference-packs.md).
 
 Changing the site’s origin changes its browser storage namespace. Export a JSON backup before moving hosts. Do not automatically upload or migrate a collector’s data to a server.
+
+## Learned vision assets
+
+Preserve the generated `vision-models/` directory, binary MIME types and license/model-card notices. `npm ci` stages pinned model data; cold builds need the exact official model download URLs or `TCG_VISION_MODEL_DIR`. Runtime inference and model loads are same-origin. No Microsoft telemetry domain or external model CDN belongs in `connect-src`. The runtime uses one WASM thread and does not require cross-origin-isolation headers.
+
+Learned reference packs are imported separately into each browser's IndexedDB. Metadata is loaded globally, while candidate features use a bounded LRU. Model file size, pack disk size and peak browser RAM are distinct measurements. Browser quota failures leave unfinished packs unavailable; remove the failed installation before retrying.

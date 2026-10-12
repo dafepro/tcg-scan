@@ -164,6 +164,14 @@ async function deterministicCamera(
     });
   }, options);
   await page.goto("/");
+  // Install our original descriptor fixture through the real import path.
+  // A Worker stub must not bypass the production zero-coverage setup guard.
+  await scanner(page)
+    .getByLabel("Import feature packs")
+    .setInputFiles(fixturePack);
+  await expect(scanner(page)).toContainText(
+    "9 installed references",
+  );
 }
 const metrics = (page: Page) =>
   page.evaluate(() => {
@@ -188,6 +196,64 @@ const release = (page: Page) =>
       window as unknown as { continuousFixture: { release: () => void } }
     ).continuousFixture.release(),
   );
+
+test("empty selected-game coverage promotes setup without opening camera or worker", async ({
+  page,
+}) => {
+  await page.route("https://**/*", (route) => route.abort());
+  await page.addInitScript(() => {
+    const calls = { camera: 0, worker: 0 };
+    Object.assign(window, { emptyCoverageCalls: calls });
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        calls.camera++;
+        throw new Error("Empty coverage must not request camera access");
+      },
+    });
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      value: class {
+        constructor() {
+          calls.worker++;
+          throw new Error("Empty coverage must not initialize a worker");
+        }
+      },
+    });
+  });
+  await page.goto("/");
+  const scan = scanner(page);
+  await expect(
+    scan.getByText("Set up Pokémon recognition", { exact: true }),
+  ).toBeVisible();
+  await expect(scan.getByLabel("Install learned reference pack")).toBeVisible();
+  await expect(
+    scan.getByRole("button", { name: "Start continuous camera" }),
+  ).toBeDisabled();
+  await expect(scan.getByLabel("Multi-card photo", { exact: true })).toBeDisabled();
+  // Coverage is per selected game, even when another game's fixture is ready.
+  await scan.getByLabel("Import feature packs").setInputFiles(fixturePack);
+  await expect(scan).toContainText("9 installed references");
+  await expect(
+    scan.getByRole("button", { name: "Start continuous camera" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Magic", exact: true }).click();
+  await expect(
+    scan.getByText("Set up Magic: The Gathering recognition", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    scan.getByRole("button", { name: "Start continuous camera" }),
+  ).toBeDisabled();
+  await expect(scan.getByLabel("Multi-card photo", { exact: true })).toBeDisabled();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as {
+          emptyCoverageCalls: { camera: number; worker: number };
+        }).emptyCoverageCalls,
+    ),
+  ).toEqual({ camera: 0, worker: 0 });
+});
 
 test("continuous controls preserve two copies, suppress undo, and rearm only on New page", async ({
   page,
@@ -230,7 +296,7 @@ test("continuous controls preserve two copies, suppress undo, and rearm only on 
     page.getByText("3 collection entries", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Verify printing to value", { exact: true }),
+    page.getByText("Identity only · value unavailable", { exact: true }),
   ).toHaveCount(3);
 });
 
@@ -354,14 +420,13 @@ test("real local worker auto-adds two synthetic video regions once @live-vision"
     });
   });
   await page.goto("/");
-  await scanner(page)
-    .getByRole("button", { name: /manage offline packs/ })
-    .click();
+  // Fresh contexts have no packs: setup opens after metadata finishes loading.
+  // Do not race the temporary pre-load Manage button as it disappears.
   await scanner(page)
     .getByLabel("Import feature packs")
     .setInputFiles(fixturePack);
   await expect(scanner(page)).toContainText(
-    "9 references installed for this game",
+    "9 installed references",
   );
   await scanner(page)
     .getByRole("button", { name: "Start continuous camera" })

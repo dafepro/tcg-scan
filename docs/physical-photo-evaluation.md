@@ -1,6 +1,6 @@
-# Physical-photo evaluation and current recognition status
+# Historical ORB physical-photo evaluation
 
-Measured on 2026-10-12. These are local development findings, not a release accuracy certification.
+Measured on 2026-10-12 before the learned-matcher integration. This report preserves the ORB baseline and exploratory detector results; it is not a description of the current default learned pipeline or a release accuracy certification. See [learned validation](learned-validation.md) for the later XFeat/Fastweb evidence and remaining limits.
 
 ## Bottom line
 
@@ -83,7 +83,7 @@ Use `npm run evaluate:photos -- --help` for the manifest schema and limits. Opti
 
 ## Bounded learned-detector experiment
 
-Two downloaded ONNX models were evaluated as data with official ONNX Runtime, outside the application. They are **not bundled or enabled** in the current source. Telemetry was disabled before runtime initialization.
+Two downloaded ONNX models were evaluated as data with official ONNX Runtime, outside the application. They were **not bundled or enabled** in the ORB checkpoint evaluated here. The later learned pipeline stages pinned Fastweb data at install time; Cardstream remains outside the application. Telemetry was disabled before runtime initialization.
 
 - **Cardstream segmentation v2:** approximately 125 MiB ONNX, Apache-2.0 publisher grant for architecture and weights. On the four whole scenes it found no true card proposals at the fixed 0.5 object-score threshold and one false playmat proposal. Five preselected card crops did localize successfully, showing that model preprocessing and inference worked. Cloud CPU inference was about 536 ms median with one thread, or 251 ms with four threads. Those are inference-only cloud measurements, not phone or end-to-end latency.
 - **Fastweb-single 1.39:** approximately 3 MiB ONNX, MIT declared in its pinned model card. It predicts one card's corners, and its presence output is always 1.0, including blank inputs. Presence therefore cannot be used as confidence. Warm single-thread cloud inference was 10.6 ms median / 14.4 ms p95. A fixed full-frame-plus-nine-window grid automatically located one of five previously labeled collection regions. Its 35 geometry-valid proposals across four photographs included many broad or non-card regions. Unchanged identity verification rejected all proposals.

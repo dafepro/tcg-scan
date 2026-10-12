@@ -57,11 +57,11 @@ function measure(image: ImageData, runs: number) {
   const timings: VisionResult["timings"][] = [];
   let last: VisionResult | undefined;
   for (let i = 0; i < runs; i++) { last = engine.analyze(image, { budgetMs: 1000 }); timings.push(last.timings); }
-  const percentile = (stage: keyof VisionResult["timings"], q: number) => {
+  const percentile = (stage: "detectionMs" | "extractionMs" | "matchingMs" | "totalMs", q: number) => {
     const sorted = timings.map(t => t[stage]).sort((a, b) => a - b);
     return Math.round(sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * q) - 1)] * 100) / 100;
   };
-  return { runs, warmupFrames: 5, milliseconds: Object.fromEntries(["detectionMs", "extractionMs", "matchingMs", "totalMs"].map(stage => [stage, { p50: percentile(stage as keyof VisionResult["timings"], 0.5), p95: percentile(stage as keyof VisionResult["timings"], 0.95) }])), lastFrame: summary(last!) };
+  return { runs, warmupFrames: 5, milliseconds: Object.fromEntries(["detectionMs", "extractionMs", "matchingMs", "totalMs"].map(stage => [stage, { p50: percentile(stage as "detectionMs" | "extractionMs" | "matchingMs" | "totalMs", 0.5), p95: percentile(stage as "detectionMs" | "extractionMs" | "matchingMs" | "totalMs", 0.95) }])), lastFrame: summary(last!) };
 }
 function perspective(image: ImageData, corners: number[]): ImageData {
   const source = cv.matFromImageData(image), from = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, image.width - 1, 0, image.width - 1, image.height - 1, 0, image.height - 1]), to = cv.matFromArray(4, 1, cv.CV_32FC2, corners);

@@ -70,3 +70,61 @@ export function undoScanEvent(
         : [],
   );
 }
+
+/** Refines catalog identifiers without pretending to verify edition, finish or value. */
+export function refineScanPrinting(
+  collection: CollectionEntry[],
+  eventId: string,
+  resolution: import("./printing-refinement").PrintingResolution,
+): CollectionEntry[] {
+  const reference = resolution.reference;
+  if (
+    resolution.state !== "catalog-printing-read" ||
+    !reference ||
+    resolution.priceEligible !== false ||
+    resolution.evidence.length < 2 ||
+    new Set(resolution.evidence.map((e) => e.frameId)).size < 2 ||
+    new Set(resolution.evidence.map((e) => e.imageFingerprint)).size < 2 ||
+    new Set(resolution.evidence.map((e) => e.sessionId)).size !== 1 ||
+    Math.max(...resolution.evidence.map((e) => e.capturedAt)) -
+      Math.min(...resolution.evidence.map((e) => e.capturedAt)) <
+      100 ||
+    !resolution.unconfirmed.includes("finish") ||
+    !resolution.unconfirmed.includes("condition")
+  )
+    return collection;
+  const card = referenceCard(reference);
+  let changed = false;
+  const next = collection.map((entry) => {
+    if (
+      entry.scanEventId !== eventId ||
+      entry.verification !== "identity-only" ||
+      entry.card.game !== reference.game ||
+      entry.card.name.normalize("NFKC").trim().toLowerCase() !==
+        reference.name.normalize("NFKC").trim().toLowerCase()
+    )
+      return entry;
+    if (
+      resolution.evidence.some(
+        (observation) =>
+          observation.eventId !== eventId ||
+          observation.game !== reference.game,
+      )
+    )
+      return entry;
+    changed = true;
+    return {
+      ...entry,
+      printingRead: {
+        referenceId: card.id,
+        setName: card.setName,
+        setCode: reference.setCode ?? "",
+        number: card.number,
+        sourceUrl: card.sourceUrl,
+        readAt: new Date().toISOString(),
+        unconfirmed: [...resolution.unconfirmed],
+      },
+    };
+  });
+  return changed ? next : collection;
+}

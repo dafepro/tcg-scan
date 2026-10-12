@@ -156,7 +156,8 @@ export class VisionEngine {
     } catch (error) { descriptor.delete(); throw error; }
     finally { keypoints.delete(); mask.delete(); reversed.delete(); lap.delete(); }
   }
-  private detect(source: Mat, maxCards: number): Quad[] {
+  /** Frozen contour protocol; the caller retains ownership of source. */
+  detect(source: Mat, maxCards: number): Quad[] {
     const cv = this.cv, small = new cv.Mat(), gray = new cv.Mat(), blur = new cv.Mat(), edges = new cv.Mat(), contours = new cv.MatVector(), hierarchy = new cv.Mat();
     const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
     try {
@@ -200,16 +201,43 @@ export class VisionEngine {
       return kept;
     } finally { small.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hierarchy.delete(); kernel.delete(); }
   }
-  private rectify(source: Mat, quad: Quad): Mat {
-    const cv = this.cv, from = cv.matFromArray(4, 1, cv.CV_32FC2, quad.flatMap(p => [p.x, p.y])), to = cv.matFromArray(4, 1, cv.CV_32FC2, canonicalCorners.flatMap(p => [p.x, p.y]));
+  private rectify(source: Mat, quad: Quad, width = WIDTH, height = HEIGHT): Mat {
+    const cv = this.cv, from = cv.matFromArray(4, 1, cv.CV_32FC2, quad.flatMap(p => [p.x, p.y])), to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width - 1, 0, width - 1, height - 1, 0, height - 1]);
     const output = new cv.Mat();
     let transform: Mat | undefined;
     try {
       transform = cv.getPerspectiveTransform(from, to);
-      cv.warpPerspective(source, output, transform, new cv.Size(WIDTH, HEIGHT), cv.INTER_LINEAR, cv.BORDER_REPLICATE);
+      cv.warpPerspective(source, output, transform, new cv.Size(width, height), cv.INTER_LINEAR, cv.BORDER_REPLICATE);
       return output;
     } catch (error) { output.delete(); throw error; }
     finally { from.delete(); to.delete(); transform?.delete(); }
+  }
+  /** Shared frozen warp, upright/180 hashes and original quality gates.
+   * The caller owns source; all temporary Mats/descriptors are released here.
+   * Learned mode intentionally retains ORB quality issues from the frozen driver.
+   */
+  prepareLearnedCrop(source: Mat, region: Quad): { image: ImageData; hashes: Extracted["hashes"]; quality: QualityEvidence } {
+    this.assertOpen();
+    const quad = orderQuad(region), crop = this.rectify(source, quad), gray = new this.cv.Mat();
+    let extracted: Extracted | undefined;
+    try {
+      this.cv.cvtColor(crop, gray, this.cv.COLOR_RGBA2GRAY);
+      extracted = this.extract(gray, Math.min(...quad.map((p, i) => distance(p, quad[(i + 1) % 4]))));
+      return { image: pixels(crop), hashes: extracted.hashes, quality: extracted.quality };
+    } finally { extracted?.descriptor.delete(); crop.delete(); gray.delete(); }
+  }
+  /** Opt-in downstream OCR crop, after identity verification. Native source
+   * resolution is checked BEFORE warp; interpolation never grants eligibility.
+   * The default matching crop and its frozen240×336 geometry remain unchanged.
+   */
+  preparePrintingCrop(source: Mat, region: Quad): { image: ImageData; sourceMinEdge: number } | undefined {
+    this.assertOpen();
+    if (region.length !== 4 || !isConvexQuad(region) || region.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= source.cols || p.y >= source.rows)) throw new Error("Printing source quad must be convex and inside the current frame.");
+    const quad = orderQuad(region), sourceMinEdge = Math.min(...quad.map((p, i) => distance(p, quad[(i + 1) % 4])));
+    if (sourceMinEdge < 480) return undefined;
+    const width = Math.min(960, Math.floor(sourceMinEdge)), height = Math.round(width * HEIGHT / WIDTH);
+    const crop = this.rectify(source, quad, width, height);
+    try { return { image: pixels(crop), sourceMinEdge }; } finally { crop.delete(); }
   }
   private descriptorFor(key: string): Mat {
     let mat = this.decoded.get(key);

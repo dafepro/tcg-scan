@@ -5,6 +5,7 @@ import {
   MAX_PACK_BYTES,
   ReferenceStorageError,
   validateFeaturePack,
+  validateReferenceMetadata,
   validatePrebuiltManifest,
   saveReferencePack,
   importReferencePack,
@@ -19,6 +20,9 @@ import {
   loadPrebuiltPackManifest,
 } from "./reference-packs";
 import type { ReferenceFeaturePack } from "./reference-packs";
+import type { VisionGame } from "./vision/types";
+import { addScanEvent } from "./scan-inventory";
+import { EMPTY_DATA, parseBackup } from "./storage";
 
 function fixture(): ReferenceFeaturePack {
   return {
@@ -174,6 +178,61 @@ describe("strict feature pack import", () => {
       /valid JSON/,
     );
   });
+});
+
+describe("legacy metadata uses the durable per-game image policy", () => {
+  it.each<[VisionGame, string]>([
+    ["pokemon", "https://cards.scryfall.io/card.jpg"],
+    ["pokemon", "https://images.pokemontcg.io/base1/1.png"],
+    ["mtg", "https://assets.tcgdex.net/card.webp"],
+    ["mtg", "https://images.pokemontcg.io/base1/1.png"],
+    ["yugioh", "https://cards.scryfall.io/card.jpg"],
+    ["pokemon", "http://assets.tcgdex.net/card.webp"],
+    ["pokemon", "https://assets.tcgdex.net:444/card.webp"],
+    ["mtg", "https://user:secret@cards.scryfall.io/card.jpg"],
+  ])(
+    "rejects unsaveable %s artwork %s before installation",
+    async (game, imageUrl) => {
+      const source = fixture();
+      Object.assign(source.cards[0], {
+        game,
+        imageUrl,
+        key: `${game}:fixture-1`,
+      });
+      source.features[0].key = source.cards[0].key;
+      await expect(saveReferencePack(source)).rejects.toMatchObject({
+        code: "invalid",
+      });
+      expect(await listReferencePacks()).toEqual([]);
+    },
+  );
+  it.each<[VisionGame, string | undefined]>([
+    ["pokemon", "https://assets.tcgdex.net:443/en/me/30th/001/low.webp"],
+    ["mtg", "https://cards.scryfall.io/normal/front/a/b/card.jpg"],
+    ["yugioh", undefined],
+  ])(
+    "keeps accepted %s artwork compatible with a durable scan save",
+    async (game, imageUrl) => {
+      const reference = validateReferenceMetadata({
+          key: `${game}:fixture-1`,
+          game,
+          name: "Fixture",
+          imageUrl,
+        }),
+        source = fixture();
+      source.cards[0] = reference;
+      source.features[0].key = reference.key;
+      const installed = await saveReferencePack(source),
+        loaded = (await loadReferencePack(installed.id))!.cards[0],
+        data = {
+          ...EMPTY_DATA,
+          collection: addScanEvent([], loaded, `legacy-${game}`),
+        };
+      expect(
+        parseBackup(JSON.stringify(data)).collection[0].card.imageUrl,
+      ).toBe(imageUrl ? new URL(imageUrl).href : undefined);
+    },
+  );
 });
 
 describe("independent IndexedDB reference persistence", () => {

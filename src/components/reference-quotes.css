@@ -1,0 +1,137 @@
+.reference-quotes {
+  min-width: 0;
+  width: 100%;
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #2e3831);
+  color: var(--muted, #a5b3a8);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.reference-quotes .reference-quotes-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px 12px;
+  justify-content: space-between;
+}
+.reference-quotes .reference-quotes-heading > strong {
+  color: var(--text, #ecf0e8);
+  font-size: 12px;
+  font-weight: 600;
+}
+.reference-quotes .reference-quotes-status {
+  color: #c1d4bb;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-caution {
+  margin: 5px 0 9px;
+  color: #cbbf9f;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.reference-quotes .reference-quotes-row {
+  display: block;
+  padding: 6px 0;
+  border-top: 1px solid #2e383180;
+}
+.reference-quotes .reference-quotes-line > a {
+  min-width: 0;
+  color: #c5ddb9;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.reference-quotes .reference-quotes-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+}
+.reference-quotes .reference-quotes-line > strong {
+  color: var(--text, #ecf0e8);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reference-quotes .reference-quotes-context {
+  margin-top: 3px;
+  color: #c1c9bf;
+}
+.reference-quotes .reference-quotes-time,
+.reference-quotes .reference-quotes-fetched {
+  color: #a8b4aa;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-fetched {
+  margin-top: 7px;
+}
+.reference-quotes .reference-quotes-empty {
+  margin: 9px 0;
+}
+.reference-quotes .reference-quotes-error {
+  margin-top: 7px;
+  color: #edc0a8;
+}
+.reference-quotes .reference-quotes-provenance,
+.reference-quotes .reference-quotes-more {
+  margin-top: 4px;
+}
+.reference-quotes .reference-quotes-provenance > summary,
+.reference-quotes .reference-quotes-more > summary {
+  cursor: pointer;
+  min-height: 30px;
+  padding: 5px 0;
+  width: fit-content;
+  max-width: 100%;
+  color: #bbd1b1;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-provenance p {
+  margin: 0 0 6px;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-provenance-row {
+  display: block;
+  padding: 7px 0;
+  border-top: 1px solid #2e383180;
+  font-size: 11px;
+}
+.reference-quotes .reference-quotes-refresh {
+  min-height: 36px;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border: 1px solid #40513f;
+  border-radius: 7px;
+  background: #1c291f;
+  color: #cce7bd;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+}
+.reference-quotes .reference-quotes-refresh:hover:not(:disabled) {
+  background: #263b27;
+}
+.reference-quotes a:focus-visible,
+.reference-quotes summary:focus-visible,
+.reference-quotes button:focus-visible {
+  outline: 2px solid var(--lime, #b2f58a);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.reference-quotes .reference-quotes-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

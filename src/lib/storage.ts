@@ -1,4 +1,5 @@
 import { CONDITIONS, FINISHES } from "../types";
+import { CARD_IMAGE_HOSTS as IMAGE_HOSTS } from "./provider-image-policy";
 import type {
   AppData,
   Card,
@@ -32,7 +33,7 @@ function date(v: unknown) {
     throw new Error("Backup contains an invalid date.");
   return s;
 }
-function safeUrl(v: unknown, hosts: string[]) {
+function safeUrl(v: unknown, hosts: readonly string[]) {
   const s = str(v, 2048);
   if (!s) return "";
   try {
@@ -55,11 +56,6 @@ const SOURCE_HOSTS: Record<Game, string[]> = {
   mtg: ["scryfall.com", "api.scryfall.com"],
   pokemon: ["api.tcgdex.net"],
   yugioh: ["ygoprodeck.com", "db.ygoprodeck.com"],
-};
-const IMAGE_HOSTS: Record<Game, string[]> = {
-  mtg: ["cards.scryfall.io"],
-  pokemon: ["assets.tcgdex.net"],
-  yugioh: [],
 };
 function parseCard(v: unknown): Card {
   if (
@@ -102,6 +98,37 @@ function parseCard(v: unknown): Card {
       : undefined,
     prices,
     description: optionalStr(v.description, 20000),
+  };
+}
+function parsePrintingRead(
+  v: unknown,
+  game: Game,
+): CollectionEntry["printingRead"] {
+  if (v === undefined) return undefined;
+  if (
+    !record(v) ||
+    !Array.isArray(v.unconfirmed) ||
+    v.unconfirmed.length > 5 ||
+    !v.unconfirmed.includes("finish") ||
+    !v.unconfirmed.includes("condition") ||
+    v.unconfirmed.some(
+      (field) =>
+        !["language", "edition", "rarity", "finish", "condition"].includes(
+          String(field),
+        ),
+    )
+  )
+    throw new Error("Backup contains an invalid printing read.");
+  return {
+    referenceId: str(v.referenceId),
+    setName: str(v.setName),
+    setCode: str(v.setCode),
+    number: str(v.number),
+    sourceUrl: safeUrl(v.sourceUrl, SOURCE_HOSTS[game]),
+    readAt: date(v.readAt),
+    unconfirmed: [...new Set(v.unconfirmed)] as NonNullable<
+      CollectionEntry["printingRead"]
+    >["unconfirmed"],
   };
 }
 export function parseBackup(text: string): AppData {
@@ -153,6 +180,7 @@ export function parseBackup(text: string): AppData {
       verification:
         v.verification === "identity-only" ? "identity-only" : undefined,
       scanEventId: optionalStr(v.scanEventId, 200),
+      printingRead: parsePrintingRead(v.printingRead, (v.card as Card).game),
     };
   });
   const scanIds = collection.flatMap((entry) =>

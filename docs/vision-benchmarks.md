@@ -1,4 +1,6 @@
-# Local vision engine: measurements and limits
+# ORB compatibility engine: historical measurements and limits
+
+This report describes the ORB compatibility engine and preserved baseline experiments. The current default learned pipeline uses different proposal and descriptor stages; use [learned validation](learned-validation.md) for its measured camera, accuracy and memory results. Do not apply the ORB stage timings below to learned end-to-end scanning.
 
 Last measured: 2026-10-12. Engine source: `src/lib/vision/`.
 

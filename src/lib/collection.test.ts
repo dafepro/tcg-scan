@@ -69,7 +69,8 @@ describe("collection", () => {
     const row = csv.split("\r\n")[1].split(",");
     expect(row.slice(2, 5)).toEqual(['""', '""', '""']);
     expect(row.slice(8, 12)).toEqual(['""', '""', '""', '""']);
-    expect(row.slice(13)).toEqual(['"Unconfirmed"', '"Test set"', '"1"']);
+    expect(row.slice(13, 16)).toEqual(['"Unconfirmed"', '"Test set"', '"1"']);
+    expect(row.slice(16)).toEqual(['""', '""', '""', '""']);
     expect(referenceTotals(entries).unpriced).toBe(1);
   });
 });

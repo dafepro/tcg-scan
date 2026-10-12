@@ -27,7 +27,12 @@ import {
 } from "lucide-react";
 import Scanner from "./components/Scanner";
 import ContinuousScanner from "./components/ContinuousScanner";
-import { addScanEvent, undoScanEvent } from "./lib/scan-inventory";
+import { ReferenceQuotes } from "./components/ReferenceQuotes";
+import {
+  addScanEvent,
+  undoScanEvent,
+  refineScanPrinting,
+} from "./lib/scan-inventory";
 import type { ReferenceMetadata } from "./lib/vision";
 import CardImage from "./components/CardImage";
 import { getCard, searchCards } from "./lib/catalog";
@@ -174,6 +179,19 @@ export default function App() {
       ...dataRef.current,
       collection: addScanEvent(dataRef.current.collection, reference, eventId),
     });
+  }
+  function refinePrinting(
+    eventId: string,
+    resolution: import("./lib/printing-refinement").PrintingResolution,
+  ) {
+    const collection = refineScanPrinting(
+      dataRef.current.collection,
+      eventId,
+      resolution,
+    );
+    if (collection === dataRef.current.collection)
+      return "The original saved scan is no longer available for this printing update.";
+    return durableScanChange({ ...dataRef.current, collection });
   }
   function undoScan(eventId: string) {
     return durableScanChange({
@@ -417,12 +435,9 @@ export default function App() {
                 </p>
                 <h1>
                   Your next great find.
-                  <br />
-                  <span>Already in focus.</span>
+                  <br /> <span>Already in focus.</span>
                 </h1>
-                <p className="page-intro">
-                  Keep the camera running. Let your collection catch up.
-                </p>
+                <p className="page-intro">Scan locally. Keep collecting.</p>
               </div>
               <div className="hero-stat">
                 <Layers3 size={22} />
@@ -463,6 +478,7 @@ export default function App() {
                   game={game}
                   onSave={saveScan}
                   onUndo={undoScan}
+                  onPrinting={refinePrinting}
                 />
                 <details className="assisted-scan">
                   <summary>
@@ -670,7 +686,7 @@ export default function App() {
             <PageHeading
               eyebrow="ONE LAST LOOK"
               title="Check your finds."
-              description="Confirm the printing and condition. Only cards you approve join your collection."
+              description="Confirm assisted search and OCR finds here. Strong continuous-camera matches save directly as unconfirmed identities."
               action={
                 <button
                   className="button secondary"
@@ -684,7 +700,7 @@ export default function App() {
               <EmptyState
                 icon={ClipboardCheck}
                 title="All caught up."
-                description="Your scanned and searched cards appear here before they enter your collection."
+                description="Assisted search and OCR finds wait here for your approval. Automatic visual matches are already in Collection."
                 action="Find your first card"
                 onAction={() => setView("scan")}
               />
@@ -772,20 +788,23 @@ export default function App() {
                 Camera frames and uploaded photos are processed on your device.
                 Visual matching uses installed local reference packs. Recognized
                 IDs are sent to the selected provider for automatic market
-                quotes; assisted searches send names or IDs. OCR loads its
-                English model from this site. Reference artwork loads from
-                approved provider hosts. Your collection stays in this browser.
+                quotes; printing refinement and assisted searches send names or
+                IDs. OCR loads its English model from this site. Learned vision
+                models also load only from this site and run locally. Reference
+                artwork loads from approved provider hosts. Your collection
+                stays in this browser.
               </p>
             </section>
             <section>
               <h3>Visual identity, unconfirmed printing</h3>
               <p>
-                Continuous scanning uses local OpenCV features and geometry.
-                Strong stable identities can save automatically, with unknown
-                condition and finish. Exact printing stays unconfirmed and is
-                excluded from value totals. Glare, sleeves, overlapping cards
-                and similar artwork can confuse recognition. Coverage is limited
-                to loaded references. Assisted OCR still requires confirmation.
+                Continuous scanning uses local learned features and geometric
+                verification, with an ORB compatibility mode. Strong stable
+                identities can save automatically, with unknown condition and
+                finish. Exact printing stays unconfirmed and is excluded from
+                value totals. Glare, sleeves, overlapping cards and similar
+                artwork can confuse recognition. Coverage is limited to loaded
+                references. Assisted OCR still requires confirmation.
               </p>
             </section>
             <section>
@@ -1279,14 +1298,41 @@ function CollectionView({
                       : ""}
                     {entry.card.setName} · {entry.card.number || "—"}
                   </p>
+                  {entry.printingRead && (
+                    <p className="muted">
+                      Printed identifiers read: {entry.printingRead.setName} ·{" "}
+                      {entry.printingRead.number}. Still unconfirmed:{" "}
+                      {entry.printingRead.unconfirmed.join(", ")}.
+                    </p>
+                  )}
                   <div className="collection-meta">
                     <span>{entry.condition}</span>
                     <span>{entry.finish}</span>
                     {entry.verification && <span>Printing unconfirmed</span>}
                   </div>
+                  {entry.verification === "identity-only" && (
+                    <ReferenceQuotes
+                      card={
+                        entry.printingRead
+                          ? {
+                              ...entry.card,
+                              id: entry.printingRead.referenceId,
+                              setName: entry.printingRead.setName,
+                              setCode: entry.printingRead.setCode,
+                              number: entry.printingRead.number,
+                              sourceUrl: entry.printingRead.sourceUrl,
+                              rarity: "Unknown",
+                              prices: [],
+                            }
+                          : entry.card
+                      }
+                    />
+                  )}
                   <div className="card-bottom">
                     {entry.verification ? (
-                      <span className="muted">Verify printing to value</span>
+                      <span className="muted">
+                        Identity only · value unavailable
+                      </span>
                     ) : (
                       <Price card={entry.card} />
                     )}

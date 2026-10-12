@@ -28,6 +28,15 @@ export interface Card {
   prices: CardPrice[];
   description?: string;
 }
+export interface CatalogPrintingRead {
+  referenceId: string;
+  setName: string;
+  setCode: string;
+  number: string;
+  sourceUrl: string;
+  readAt: string;
+  unconfirmed: ("language" | "edition" | "rarity" | "finish" | "condition")[];
+}
 export interface CollectionEntry {
   id: string;
   card: Card;
@@ -39,6 +48,8 @@ export interface CollectionEntry {
   /** Live visual matches do not establish edition, finish or physical condition. */
   verification?: "identity-only";
   scanEventId?: string;
+  /** Literal catalog identifiers read from two distinct camera frames; no valuation upgrade. */
+  printingRead?: CatalogPrintingRead;
 }
 export interface ReviewItem {
   id: string;

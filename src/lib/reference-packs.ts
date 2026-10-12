@@ -5,6 +5,7 @@ import type {
   ReferenceMetadata,
   VisionGame,
 } from "./vision/types";
+import { CARD_IMAGE_HOSTS } from "./provider-image-policy";
 
 /** Limits apply to each shard, not the complete game catalog. */
 export const MAX_PACK_BYTES = 64 * 1024 * 1024;
@@ -13,12 +14,6 @@ export const MAX_REFERENCE_IMAGE_BYTES = 12 * 1024 * 1024;
 export const REFERENCE_DATABASE_NAME = "tcg-scan-visual-references";
 const DATABASE_VERSION = 1;
 const GAMES: VisionGame[] = ["pokemon", "mtg", "yugioh"];
-const IMAGE_HOSTS = new Set([
-  "assets.tcgdex.net",
-  "images.pokemontcg.io",
-  "cards.scryfall.io",
-  "images.ygoprodeck.com",
-]);
 const SOURCE_HOSTS = new Set([
   "api.tcgdex.net",
   "tcgdex.net",
@@ -149,7 +144,11 @@ function date(value: unknown, label: string): string | undefined {
   if (!Number.isFinite(Date.parse(result))) invalid(`Invalid ${label}.`);
   return result;
 }
-function safeUrl(value: unknown, image: boolean): string | undefined {
+function safeUrl(
+  value: unknown,
+  image: boolean,
+  game: VisionGame,
+): string | undefined {
   if (value === undefined) return undefined;
   const raw = text(value, "provider URL", 2048);
   let url: URL;
@@ -163,7 +162,9 @@ function safeUrl(value: unknown, image: boolean): string | undefined {
     url.username ||
     url.password ||
     url.port ||
-    !(image ? IMAGE_HOSTS : SOURCE_HOSTS).has(url.hostname)
+    !(image
+      ? CARD_IMAGE_HOSTS[game].includes(url.hostname)
+      : SOURCE_HOSTS.has(url.hostname))
   )
     invalid("Only known HTTPS card-provider URLs are allowed.");
   return url.href;
@@ -192,8 +193,8 @@ export function validateReferenceMetadata(value: unknown): ReferenceMetadata {
     artworkKey: optionalText(row, "artworkKey", 300),
     setName: optionalText(row, "setName"),
     number: optionalText(row, "number", 100),
-    imageUrl: safeUrl(row.imageUrl, true),
-    sourceUrl: safeUrl(row.sourceUrl, false),
+    imageUrl: safeUrl(row.imageUrl, true, row.game as VisionGame),
+    sourceUrl: safeUrl(row.sourceUrl, false, row.game as VisionGame),
   };
 }
 function validateFeatures(value: unknown): ReferenceFeatures {

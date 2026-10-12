@@ -162,6 +162,10 @@ export function collectionCsv(collection: CollectionEntry[]) {
       "Printing verification",
       "Matched reference set",
       "Matched reference number",
+      "Read catalog set",
+      "Read catalog number",
+      "Catalog identifiers read at",
+      "Still unconfirmed",
     ],
   ];
   for (const entry of collection) {
@@ -187,6 +191,10 @@ export function collectionCsv(collection: CollectionEntry[]) {
       entry.verification === "identity-only" ? "Unconfirmed" : "User confirmed",
       entry.verification === "identity-only" ? entry.card.setName : "",
       entry.verification === "identity-only" ? entry.card.number : "",
+      entry.printingRead?.setName ?? "",
+      entry.printingRead?.number ?? "",
+      entry.printingRead?.readAt ?? "",
+      entry.printingRead?.unconfirmed.join("; ") ?? "",
     ]);
   }
   return "\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n");

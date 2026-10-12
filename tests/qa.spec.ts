@@ -125,7 +125,7 @@ async function queueMtg(page: Page) {
   await page
     .getByRole("button", { name: "Review Fixture Mage, Fixture Set" })
     .click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator(".toast[role=status]")).toContainText(
     "Fixture Mage is ready to review.",
   );
   await page.getByRole("button", { name: /^Review(?:\s*\d+)?$/ }).click();
@@ -299,7 +299,9 @@ test("malformed, hostile and oversized backups are rejected before rendering ext
       },
     ],
   });
-  await expect(page.getByRole("status")).toContainText("unsafe link");
+  await expect(page.locator(".toast[role=status]")).toContainText(
+    "unsafe link",
+  );
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await importData(page, {
     ...backup,
@@ -313,21 +315,29 @@ test("malformed, hostile and oversized backups are rejected before rendering ext
       },
     ],
   });
-  await expect(page.getByRole("status")).toContainText("unsafe link");
+  await expect(page.locator(".toast[role=status]")).toContainText(
+    "unsafe link",
+  );
   await importData(page, { ...backup, collection: [entry, entry] });
-  await expect(page.getByRole("status")).toContainText("duplicate entry IDs");
+  await expect(page.locator(".toast[role=status]")).toContainText(
+    "duplicate entry IDs",
+  );
   await page.getByLabel("Import JSON backup", { exact: true }).setInputFiles({
     name: "bad.json",
     mimeType: "application/json",
     buffer: Buffer.from("{broken"),
   });
-  await expect(page.getByRole("status")).toContainText("not valid JSON");
+  await expect(page.locator(".toast[role=status]")).toContainText(
+    "not valid JSON",
+  );
   await page.getByLabel("Import JSON backup", { exact: true }).setInputFiles({
     name: "large.json",
     mimeType: "application/json",
     buffer: Buffer.alloc(10_000_001, " "),
   });
-  await expect(page.getByRole("status")).toContainText("smaller than 10 MB");
+  await expect(page.locator(".toast[role=status]")).toContainText(
+    "smaller than 10 MB",
+  );
 });
 
 test("aggregate import limits protect the persisted collection", async ({
@@ -493,6 +503,12 @@ test("camera denial leaves photo upload and manual search available", async ({
     });
   });
   await open(page);
+  await page
+    .getByText(
+      "Assisted photo / text scan · for cards outside your local packs",
+      { exact: true },
+    )
+    .click();
   await page.getByRole("button", { name: "Start camera", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Camera access was not allowed",

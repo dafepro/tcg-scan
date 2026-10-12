@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 
 async function syntheticCard(page: Page): Promise<Buffer> {
   // Original test artwork, generated in the browser. No personal/card photo.
@@ -27,6 +29,12 @@ test("photo validation rejects empty, unsupported, oversized and corrupt files",
   page,
 }) => {
   await page.goto("/");
+  await page
+    .getByText(
+      "Assisted photo / text scan · for cards outside your local packs",
+      { exact: true },
+    )
+    .click();
   const input = page.getByLabel("Choose card photo", { exact: true });
   await input.setInputFiles({
     name: "empty.png",
@@ -97,6 +105,12 @@ test("cancelling an initializing reader terminates it and another photo can be s
   });
   await page.route("https://**/*", (route) => route.abort());
   await page.goto("/");
+  await page
+    .getByText(
+      "Assisted photo / text scan · for cards outside your local packs",
+      { exact: true },
+    )
+    .click();
   const image = await syntheticCard(page);
   const input = page.getByLabel("Choose card photo", { exact: true });
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -145,11 +159,19 @@ test("real browser OCR reads a synthetic PNG, searches its title and requires ma
   test.skip(
     process.env.RUN_LIVE_OCR !== "1" ||
       testInfo.project.name !== "desktop-chromium",
-    "Opt-in real OCR integration: RUN_LIVE_OCR=1; one desktop model download only.",
+    "Opt-in real OCR integration: RUN_LIVE_OCR=1; one desktop run using the packaged same-origin model.",
   );
   test.setTimeout(150_000);
   const external: { url: string; method: string; body: string | null }[] = [];
+  const modelRequests: { url: string; method: string; body: string | null }[] =
+    [];
   page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/ocr/eng.traineddata.gz"))
+      modelRequests.push({
+        url: request.url(),
+        method: request.method(),
+        body: request.postData(),
+      });
     if (
       /^https?:/.test(request.url()) &&
       new URL(request.url()).hostname !== "127.0.0.1"
@@ -162,7 +184,22 @@ test("real browser OCR reads a synthetic PNG, searches its title and requires ma
   });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  // Model and local Tesseract worker are real. Only catalog identity is a fixture.
+  // The optional cache uses unmodified official model bytes, never fake OCR output.
+  // Keep a substituted model distinct from testing the production model file in reports.
+  if (process.env.OCR_MODEL_FIXTURE) {
+    const model = await readFile(process.env.OCR_MODEL_FIXTURE);
+    const gzip =
+      model[0] === 0x1f && model[1] === 0x8b ? model : gzipSync(model);
+    testInfo.annotations.push({
+      type: "model-source",
+      description:
+        "Cached official eng model supplied by runner; this case does not establish packaged-model delivery.",
+    });
+    await page.route("**/ocr/eng.traineddata.gz", (route) =>
+      route.fulfill({ contentType: "application/gzip", body: gzip }),
+    );
+  }
+  // Model and local Tesseract worker are real. Catalog identity is a fixture.
   await page.route("https://api.tcgdex.net/**", (route) =>
     route.fulfill({
       json: new URL(route.request().url()).pathname.endsWith("/base1-58")
@@ -177,14 +214,18 @@ test("real browser OCR reads a synthetic PNG, searches its title and requires ma
     }),
   );
   await page.goto("/");
-  const image = await syntheticCard(page);
   await page
-    .getByLabel("Choose card photo", { exact: true })
-    .setInputFiles({
-      name: "synthetic-card.png",
-      mimeType: "image/png",
-      buffer: image,
-    });
+    .getByText(
+      "Assisted photo / text scan · for cards outside your local packs",
+      { exact: true },
+    )
+    .click();
+  const image = await syntheticCard(page);
+  await page.getByLabel("Choose card photo", { exact: true }).setInputFiles({
+    name: "synthetic-card.png",
+    mimeType: "image/png",
+    buffer: image,
+  });
   await expect(page.locator(".scanner-readout")).toContainText("Title read", {
     timeout: 100_000,
   });
@@ -207,16 +248,14 @@ test("real browser OCR reads a synthetic PNG, searches its title and requires ma
     page.getByText("0 collection entries", { exact: true }),
   ).toBeVisible();
   expect(errors).toEqual([]);
-  expect(
-    external.some(
-      (request) =>
-        new URL(request.url).hostname === "tessdata.projectnaptha.com",
-    ),
-  ).toBe(true);
+  expect(modelRequests.length).toBeGreaterThan(0);
+  for (const request of modelRequests) {
+    expect(new URL(request.url).origin).toBe(new URL(page.url()).origin);
+    expect(request.method).toBe("GET");
+    expect(request.body).toBeNull();
+  }
   for (const request of external) {
-    expect(["tessdata.projectnaptha.com", "api.tcgdex.net"]).toContain(
-      new URL(request.url).hostname,
-    );
+    expect(new URL(request.url).hostname).toBe("api.tcgdex.net");
     expect(request.method).toBe("GET");
     expect(request.body).toBeNull();
   }

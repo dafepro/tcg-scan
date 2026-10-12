@@ -1,11 +1,12 @@
 export type Game = "pokemon" | "mtg" | "yugioh";
 export type Condition =
+  | "Unknown"
   | "Near mint"
   | "Lightly played"
   | "Moderately played"
   | "Heavily played"
   | "Damaged";
-export type Finish = "Normal" | "Foil" | "Reverse holo";
+export type Finish = "Unknown" | "Normal" | "Foil" | "Reverse holo";
 export interface CardPrice {
   amount: number;
   currency: "USD" | "EUR";
@@ -35,6 +36,9 @@ export interface CollectionEntry {
   finish: Finish;
   addedAt: string;
   notes: string;
+  /** Live visual matches do not establish edition, finish or physical condition. */
+  verification?: "identity-only";
+  scanEventId?: string;
 }
 export interface ReviewItem {
   id: string;
@@ -70,10 +74,11 @@ export const GAME_SHORT: Record<Game, string> = {
   yugioh: "Yu-Gi-Oh!",
 };
 export const CONDITIONS: Condition[] = [
+  "Unknown",
   "Near mint",
   "Lightly played",
   "Moderately played",
   "Heavily played",
   "Damaged",
 ];
-export const FINISHES: Finish[] = ["Normal", "Foil", "Reverse holo"];
+export const FINISHES: Finish[] = ["Unknown", "Normal", "Foil", "Reverse holo"];

@@ -1,0 +1,3215 @@
+{
+  "createdAt": "2026-10-12T15:45:19.170Z",
+  "notice": "Compact exact-hash correction; sparse96 reference features and ORB/RANSAC gates unchanged. Source-derived scenes and convenience development photographs are not held-out physical deployment accuracy. Timed replay coordinated to avoid the feature-extraction experiment; ordinary shared-host contention remains possible.",
+  "runtime": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logicalCpus": 9,
+    "opencv": "5.0.0-release.1"
+  },
+  "sourceHashes": {
+    "hash.ts": "76c93258684de4256f19f3fc36a823c9d0c8aa8ee53226f3accfda4d42349d3c",
+    "hash.test.ts": "a73fce9cf714ddf378eaa3cd486108049660e2ad520932200276bd7c3b2ee735",
+    "engine.ts": "6cba6398a2d88da1196f3add492cd8aa1ee5fd85702684e7befdcb950797012b",
+    "features.ts": "bb1671b463b662482fa3326dd5df4e3391a45234bd6d12d5a27592e69c2277bc",
+    "scoring.ts": "2d1ce79cbc6ec1e90c26e4fd11ca1b39605b9fc38706d37dae73d39f25013898"
+  },
+  "sourceReplay": {
+    "input": {
+      "manifest": "pokemon-2000/manifest.json",
+      "shardHashes": [
+        "2f2e12d8a312e0ffa5bc2daddfcb32cd47de25504010d33455e076e07bc5a0d4",
+        "1599cb0d9959c49367199443ca3add4ec8a5490a0f397ea91c323445f45c8a4e",
+        "df4854565f204dcdce54c1a7d3ea83d6597ff52174d798b12c8b763751dcde11",
+        "d0e7d8790a7ff379809190c231d0757338abc3acfa943a3729b16e9fadc4af48"
+      ],
+      "coverage": {
+        "totalReferences": 2000,
+        "byGame": {
+          "pokemon": 2000,
+          "mtg": 0,
+          "yugioh": 0
+        },
+        "packs": [
+          "pokemon catalog \u00b7 subset 2000/19666 (1/4)",
+          "pokemon catalog \u00b7 subset 2000/19666 (2/4)",
+          "pokemon catalog \u00b7 subset 2000/19666 (3/4)",
+          "pokemon catalog \u00b7 subset 2000/19666 (4/4)"
+        ]
+      },
+      "bytes": 13006224,
+      "loadIncludingReadParseIntegrityMs": 470.1816960000001,
+      "cachedOutOfIndexIdentitiesAvailable": 4971,
+      "cachedOtherPrintingsAvailable": 4907,
+      "missingIndexed": [],
+      "selectedKeys": [
+        {
+          "key": "pokemon:30th-001",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:30th-032",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:30th-063",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:30th-094",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:30th-126",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:30th-157",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base1-33",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base1-61",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base1-90",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base2-29",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base2-57",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base3-27",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base3-56",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base4-117",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base4-28",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base4-56",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base4-85",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base5-23",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base5-51",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:base5-8",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:basep-33",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw1-102",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw1-27",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw1-55",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw1-84",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw10-17",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw10-45",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw10-73",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw11-101",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw11-26",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw11-54",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw11-82",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw11-RC21",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw2-27",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw2-55",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw2-83",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw3-20",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw3-49",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw3-77",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw4-11",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw4-40",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw4-69",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw4-97",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw5-24",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw5-53",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw5-81",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw6-109",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw6-21",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw6-50",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw6-79",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw7-106",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw7-134",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw7-25",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw7-53",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw7-81",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw8-109",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw8-138",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw8-41",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw8-7",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw8-98",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw9-16",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw9-44",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bw9-72",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bwp-BW02",
+          "scope": "indexed"
+        },
+        {
+          "key": "pokemon:bwp-BW39",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:cel25-16",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:cel25-24",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:cel25-8",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-25",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-35",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-40",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-47",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-53",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-71",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-77",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-80",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-84",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:col1-SL9",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-12",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-15",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-19",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-21",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-24",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-28",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-30",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-33",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-5",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dc1-9",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:det1-3",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-106",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-112",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-12",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-33",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-43",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-65",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-69",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp1-89",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-103",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-110",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-113",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-116",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-124",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-20",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-29",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-37",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-42",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-52",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-63",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-67",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-79",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp2-88",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-106",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-110",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-12",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-123",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-126",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-27",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-41",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-45",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-69",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-72",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp3-80",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-100",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-22",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-3",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-42",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-46",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:dp4-52",
+          "scope": "held-out-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW34",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW42",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW50",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW57",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW65",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW74",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW81",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW89",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:bwp-BW99",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:cel25-15",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:cel25-4",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-16",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-23",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-33",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-45",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-58",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-65",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-75",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-90",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:col1-SL2",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:det1-11",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:det1-2",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-100",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-110",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-122",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-13",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-2",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-27",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-37",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-46",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-53",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-61",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-74",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-80",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-9",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp1-97",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-105",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-123",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-24",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-32",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-47",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-55",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-68",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-76",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-86",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp2-95",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-102",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-115",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-13",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-19",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-26",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-35",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-48",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-54",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-61",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-74",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-85",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp3-93",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-10",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-13",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-20",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-31",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-40",
+          "scope": "held-out-printing-known-identity"
+        },
+        {
+          "key": "pokemon:dp4-54",
+          "scope": "held-out-printing-known-identity"
+        }
+      ]
+    },
+    "parameters": {
+      "image": [
+        640,
+        480
+      ],
+      "referenceFeatures": 96,
+      "queryFeatures": 500,
+      "shortlist": 8,
+      "transforms": [
+        "upright-perspective",
+        "upside-down",
+        "150px-wide"
+      ],
+      "repeats": 2,
+      "frameBudgetMs": 1000
+    },
+    "acceptanceStateChangesVersusOriginal": 0,
+    "all": {
+      "distinctSourceImages": 192,
+      "distinctTransformedScenes": 576,
+      "timedAnalyses": 1152,
+      "scenesDetected": 561,
+      "exactTopReference": 182,
+      "correctIdentityTop": 187,
+      "correctIdentityAutoEligible": 185,
+      "wrongIdentityAutoEligible": 0,
+      "ambiguousScenes": 0,
+      "qualityScenes": 0,
+      "unknownScenes": 376,
+      "deferredScenes": 0,
+      "indexedExactShortlistMisses": 0,
+      "indexedIdentityShortlistMisses": 0,
+      "milliseconds": {
+        "detectionMs": {
+          "p50": 6.84,
+          "p95": 8.44
+        },
+        "extractionMs": {
+          "p50": 11.98,
+          "p95": 15.48
+        },
+        "matchingMs": {
+          "p50": 19.92,
+          "p95": 32.79
+        },
+        "totalMs": {
+          "p50": 39.11,
+          "p95": 52.71
+        },
+        "hashRetrievalMs": {
+          "p50": 0.34,
+          "p95": 0.49
+        }
+      }
+    },
+    "byScope": {
+      "indexed": {
+        "distinctSourceImages": 64,
+        "distinctTransformedScenes": 192,
+        "timedAnalyses": 384,
+        "scenesDetected": 185,
+        "exactTopReference": 182,
+        "correctIdentityTop": 185,
+        "correctIdentityAutoEligible": 185,
+        "wrongIdentityAutoEligible": 0,
+        "ambiguousScenes": 0,
+        "qualityScenes": 0,
+        "unknownScenes": 0,
+        "deferredScenes": 0,
+        "indexedExactShortlistMisses": 0,
+        "indexedIdentityShortlistMisses": 0,
+        "milliseconds": {
+          "detectionMs": {
+            "p50": 6.75,
+            "p95": 8.28
+          },
+          "extractionMs": {
+            "p50": 11.95,
+            "p95": 15.18
+          },
+          "matchingMs": {
+            "p50": 22.45,
+            "p95": 34.12
+          },
+          "totalMs": {
+            "p50": 41.61,
+            "p95": 53.71
+          },
+          "hashRetrievalMs": {
+            "p50": 0.33,
+            "p95": 0.52
+          }
+        }
+      },
+      "held-out-printing-known-identity": {
+        "distinctSourceImages": 64,
+        "distinctTransformedScenes": 192,
+        "timedAnalyses": 384,
+        "scenesDetected": 187,
+        "exactTopReference": 0,
+        "correctIdentityTop": 2,
+        "correctIdentityAutoEligible": 0,
+        "wrongIdentityAutoEligible": 0,
+        "ambiguousScenes": 0,
+        "qualityScenes": 0,
+        "unknownScenes": 187,
+        "deferredScenes": 0,
+        "indexedExactShortlistMisses": 0,
+        "indexedIdentityShortlistMisses": 0,
+        "milliseconds": {
+          "detectionMs": {
+            "p50": 6.91,
+            "p95": 8.42
+          },
+          "extractionMs": {
+            "p50": 11.97,
+            "p95": 15.25
+          },
+          "matchingMs": {
+            "p50": 18.87,
+            "p95": 33.38
+          },
+          "totalMs": {
+            "p50": 38.25,
+            "p95": 54.03
+          },
+          "hashRetrievalMs": {
+            "p50": 0.34,
+            "p95": 0.5
+          }
+        }
+      },
+      "held-out-identity": {
+        "distinctSourceImages": 64,
+        "distinctTransformedScenes": 192,
+        "timedAnalyses": 384,
+        "scenesDetected": 189,
+        "exactTopReference": 0,
+        "correctIdentityTop": 0,
+        "correctIdentityAutoEligible": 0,
+        "wrongIdentityAutoEligible": 0,
+        "ambiguousScenes": 0,
+        "qualityScenes": 0,
+        "unknownScenes": 189,
+        "deferredScenes": 0,
+        "indexedExactShortlistMisses": 0,
+        "indexedIdentityShortlistMisses": 0,
+        "milliseconds": {
+          "detectionMs": {
+            "p50": 6.83,
+            "p95": 8.76
+          },
+          "extractionMs": {
+            "p50": 12,
+            "p95": 15.97
+          },
+          "matchingMs": {
+            "p50": 17.69,
+            "p95": 29.27
+          },
+          "totalMs": {
+            "p50": 37.31,
+            "p95": 50.68
+          },
+          "hashRetrievalMs": {
+            "p50": 0.34,
+            "p95": 0.47
+          }
+        }
+      }
+    }
+  },
+  "development": {
+    "stats": [
+      {
+        "count": 2000,
+        "uniquePhotos": 8,
+        "detections": 26,
+        "eligible": 17,
+        "queryP50": 0.23279100000036124,
+        "queryP95": 0.39936200000011013,
+        "frameP50": 104.07615200000009,
+        "frameP95": 355.46942899999976
+      },
+      {
+        "count": 10000,
+        "uniquePhotos": 8,
+        "detections": 26,
+        "eligible": 17,
+        "queryP50": 1.49163899999985,
+        "queryP95": 3.0142460000006395,
+        "frameP50": 87.5801420000007,
+        "frameP95": 414.3644010000007
+      }
+    ],
+    "photos": [
+      {
+        "references": 2000,
+        "file": "ebay_starter_countertop.jpg",
+        "sha256": "9ca1f41796ee44c420221f9a1a607ae93126e4e97b5fe46bad2c62e9b3957c67",
+        "detected": 4,
+        "identityEligible": 4,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 475,
+                "y": 565
+              },
+              {
+                "x": 788.75,
+                "y": 553.75
+              },
+              {
+                "x": 820,
+                "y": 1017.5
+              },
+              {
+                "x": 487.5,
+                "y": 1025
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-93",
+              "pokemon:base2-53",
+              "pokemon:bw6-30",
+              "pokemon:base4-42",
+              "pokemon:base3-38",
+              "pokemon:base4-76",
+              "pokemon:base3-56",
+              "pokemon:base5-20"
+            ],
+            "bestKey": "pokemon:base4-93",
+            "bestName": "Squirtle",
+            "inliers": 60,
+            "artworkInliers": 15
+          },
+          {
+            "quad": [
+              {
+                "x": 73.75,
+                "y": 548.75
+              },
+              {
+                "x": 381.25,
+                "y": 556.25
+              },
+              {
+                "x": 363.75,
+                "y": 1016.25
+              },
+              {
+                "x": 31.25,
+                "y": 1006.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-87",
+              "pokemon:base1-58",
+              "pokemon:basep-2",
+              "pokemon:base4-82",
+              "pokemon:base1-2",
+              "pokemon:base4-12",
+              "pokemon:base4-45",
+              "pokemon:base5-9"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 53,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 478.75,
+                "y": 131.25
+              },
+              {
+                "x": 763.75,
+                "y": 121.25
+              },
+              {
+                "x": 798.75,
+                "y": 506.25
+              },
+              {
+                "x": 488.75,
+                "y": 513.75
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-67",
+              "pokemon:base4-74",
+              "pokemon:base2-49",
+              "pokemon:base4-66",
+              "pokemon:base4-68",
+              "pokemon:base2-52",
+              "pokemon:base2-32",
+              "pokemon:base5-29"
+            ],
+            "bestKey": "pokemon:base4-67",
+            "bestName": "Bulbasaur",
+            "inliers": 41,
+            "artworkInliers": 18
+          },
+          {
+            "quad": [
+              {
+                "x": 103.75,
+                "y": 123.75
+              },
+              {
+                "x": 385,
+                "y": 122.5
+              },
+              {
+                "x": 383.75,
+                "y": 506.25
+              },
+              {
+                "x": 75,
+                "y": 511.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-69",
+              "pokemon:base1-46",
+              "pokemon:base2-49",
+              "pokemon:base4-42",
+              "pokemon:base4-66",
+              "pokemon:base5-67",
+              "pokemon:bw10-7",
+              "pokemon:bw7-30"
+            ],
+            "bestKey": "pokemon:base4-69",
+            "bestName": "Charmander",
+            "inliers": 55,
+            "artworkInliers": 15
+          }
+        ]
+      },
+      {
+        "references": 2000,
+        "file": "ebay_pikachu_wood.jpg",
+        "sha256": "e7bcf0e2dcb58802fbd81fb2730cb7d7876175a5c12f3ac2c811ea1a74ee754d",
+        "detected": 1,
+        "identityEligible": 1,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 340,
+                "y": 348.33333333333337
+              },
+              {
+                "x": 863.3333333333334,
+                "y": 335
+              },
+              {
+                "x": 885,
+                "y": 1071.6666666666667
+              },
+              {
+                "x": 346.6666666666667,
+                "y": 1083.3333333333335
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:base4-87",
+              "pokemon:base1-58",
+              "pokemon:base4-45",
+              "pokemon:basep-2",
+              "pokemon:bw7-19",
+              "pokemon:base1-12",
+              "pokemon:base1-8",
+              "pokemon:base5-9"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 52,
+            "artworkInliers": 20
+          }
+        ]
+      },
+      {
+        "references": 2000,
+        "file": "ebay_starters_textured.jpg",
+        "sha256": "f89fe4e50a1a701657791d742ce08c2b2354e8410d53d46c4f9b0ed0e4a310a9",
+        "detected": 1,
+        "identityEligible": 1,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 468.75,
+                "y": 620
+              },
+              {
+                "x": 856.25,
+                "y": 633.75
+              },
+              {
+                "x": 867.5,
+                "y": 1155
+              },
+              {
+                "x": 480,
+                "y": 1150
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:base4-3",
+              "pokemon:base4-87",
+              "pokemon:base2-2",
+              "pokemon:base1-58",
+              "pokemon:base1-2",
+              "pokemon:base4-7",
+              "pokemon:base1-8",
+              "pokemon:base5-34"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 64,
+            "artworkInliers": 16
+          }
+        ]
+      },
+      {
+        "references": 2000,
+        "file": "tcs_promos.jpg",
+        "sha256": "f07d76cb8203aa5024c34492b65f5e9f171ebfda741e0284509d086d3f172ffb",
+        "detected": 9,
+        "identityEligible": 9,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 445.83333333333337,
+                "y": 1297.9166666666667
+              },
+              {
+                "x": 806.25,
+                "y": 1287.5
+              },
+              {
+                "x": 816.6666666666667,
+                "y": 1808.3333333333335
+              },
+              {
+                "x": 450,
+                "y": 1820.8333333333335
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-7",
+              "pokemon:base5-50",
+              "pokemon:base2-17",
+              "pokemon:basep-32",
+              "pokemon:base4-80",
+              "pokemon:basep-2",
+              "pokemon:base3-30",
+              "pokemon:base2-1"
+            ],
+            "bestKey": "pokemon:basep-7",
+            "bestName": "Jigglypuff",
+            "inliers": 49,
+            "artworkInliers": 21
+          },
+          {
+            "quad": [
+              {
+                "x": 856.25,
+                "y": 1295.8333333333335
+              },
+              {
+                "x": 1214.5833333333335,
+                "y": 1285.4166666666667
+              },
+              {
+                "x": 1231.25,
+                "y": 1800
+              },
+              {
+                "x": 866.6666666666667,
+                "y": 1812.5
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-8",
+              "pokemon:basep-9",
+              "pokemon:base4-10",
+              "pokemon:bw2-87",
+              "pokemon:bw2-58",
+              "pokemon:base5-24",
+              "pokemon:base2-42",
+              "pokemon:base5-38"
+            ],
+            "bestKey": "pokemon:basep-8",
+            "bestName": "Mew",
+            "inliers": 47,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 1268.75,
+                "y": 1289.5833333333335
+              },
+              {
+                "x": 1618.75,
+                "y": 1275
+              },
+              {
+                "x": 1645.8333333333335,
+                "y": 1785.4166666666667
+              },
+              {
+                "x": 1287.5,
+                "y": 1804.1666666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-8",
+              "pokemon:basep-9",
+              "pokemon:base3-39",
+              "pokemon:basep-3",
+              "pokemon:base4-10",
+              "pokemon:base4-65",
+              "pokemon:base2-60",
+              "pokemon:base3-16"
+            ],
+            "bestKey": "pokemon:basep-8",
+            "bestName": "Mew",
+            "inliers": 37,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 452.08333333333337,
+                "y": 725
+              },
+              {
+                "x": 810.4166666666667,
+                "y": 733.3333333333334
+              },
+              {
+                "x": 808.3333333333334,
+                "y": 1231.25
+              },
+              {
+                "x": 443.75,
+                "y": 1231.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-4",
+              "pokemon:base5-34",
+              "pokemon:bw7-14",
+              "pokemon:basep-44",
+              "pokemon:base5-28",
+              "pokemon:base1-2",
+              "pokemon:basep-1",
+              "pokemon:basep-11"
+            ],
+            "bestKey": "pokemon:basep-4",
+            "bestName": "Pikachu",
+            "inliers": 62,
+            "artworkInliers": 25
+          },
+          {
+            "quad": [
+              {
+                "x": 847.9166666666667,
+                "y": 731.25
+              },
+              {
+                "x": 1204.1666666666667,
+                "y": 718.75
+              },
+              {
+                "x": 1218.75,
+                "y": 1222.9166666666667
+              },
+              {
+                "x": 864.5833333333334,
+                "y": 1235.4166666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-5",
+              "pokemon:base3-19",
+              "pokemon:bw8-28",
+              "pokemon:base2-34",
+              "pokemon:base4-37",
+              "pokemon:base4-97",
+              "pokemon:base5-39",
+              "pokemon:base5-53"
+            ],
+            "bestKey": "pokemon:basep-5",
+            "bestName": "Dragonite",
+            "inliers": 43,
+            "artworkInliers": 15
+          },
+          {
+            "quad": [
+              {
+                "x": 1247.9166666666667,
+                "y": 729.1666666666667
+              },
+              {
+                "x": 1604.1666666666667,
+                "y": 718.75
+              },
+              {
+                "x": 1618.75,
+                "y": 1220.8333333333335
+              },
+              {
+                "x": 1264.5833333333335,
+                "y": 1229.1666666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-6",
+              "pokemon:base4-44",
+              "pokemon:base2-15",
+              "pokemon:base2-23",
+              "pokemon:base2-41",
+              "pokemon:base2-55",
+              "pokemon:base4-47",
+              "pokemon:bw9-94"
+            ],
+            "bestKey": "pokemon:basep-6",
+            "bestName": "Arcanine",
+            "inliers": 56,
+            "artworkInliers": 24
+          },
+          {
+            "quad": [
+              {
+                "x": 447.9166666666667,
+                "y": 170.83333333333334
+              },
+              {
+                "x": 806.25,
+                "y": 183.33333333333334
+              },
+              {
+                "x": 804.1666666666667,
+                "y": 672.9166666666667
+              },
+              {
+                "x": 441.6666666666667,
+                "y": 668.75
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-1",
+              "pokemon:base3-7",
+              "pokemon:base1-62",
+              "pokemon:base1-53",
+              "pokemon:base3-5",
+              "pokemon:base5-11",
+              "pokemon:base1-23",
+              "pokemon:base5-34"
+            ],
+            "bestKey": "pokemon:basep-1",
+            "bestName": "Pikachu",
+            "inliers": 50,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 843.75,
+                "y": 191.66666666666669
+              },
+              {
+                "x": 1193.75,
+                "y": 181.25
+              },
+              {
+                "x": 1214.5833333333335,
+                "y": 668.75
+              },
+              {
+                "x": 858.3333333333334,
+                "y": 683.3333333333334
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-2",
+              "pokemon:basep-15",
+              "pokemon:base4-51",
+              "pokemon:base2-7",
+              "pokemon:base1-58",
+              "pokemon:base2-56",
+              "pokemon:base3-3",
+              "pokemon:base1-15"
+            ],
+            "bestKey": "pokemon:basep-2",
+            "bestName": "Electabuzz",
+            "inliers": 49,
+            "artworkInliers": 21
+          },
+          {
+            "quad": [
+              {
+                "x": 1250,
+                "y": 185.41666666666669
+              },
+              {
+                "x": 1597.9166666666667,
+                "y": 189.58333333333334
+              },
+              {
+                "x": 1608.3333333333335,
+                "y": 675
+              },
+              {
+                "x": 1254.1666666666667,
+                "y": 670.8333333333334
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-3",
+              "pokemon:base1-5",
+              "pokemon:basep-44",
+              "pokemon:base5-27",
+              "pokemon:base5-51",
+              "pokemon:bw6-6",
+              "pokemon:bw7-51",
+              "pokemon:base3-39"
+            ],
+            "bestKey": "pokemon:basep-3",
+            "bestName": "Mewtwo",
+            "inliers": 48,
+            "artworkInliers": 14
+          }
+        ]
+      },
+      {
+        "references": 2000,
+        "file": "ebay_base_blue_binder.jpg",
+        "sha256": "8d0bdb016832f9db9352bf9d35ba73cac5f6a79e6b499c6d005fe26488f83b1c",
+        "detected": 9,
+        "identityEligible": 0,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 271.25,
+                "y": 415
+              },
+              {
+                "x": 493.75,
+                "y": 418.75
+              },
+              {
+                "x": 492.5,
+                "y": 730
+              },
+              {
+                "x": 261.25,
+                "y": 730
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base3-43",
+              "pokemon:base5-54",
+              "pokemon:base4-17",
+              "pokemon:base4-43",
+              "pokemon:bw11-37",
+              "pokemon:base2-1",
+              "pokemon:base5-1",
+              "pokemon:base4-4"
+            ],
+            "bestKey": "pokemon:base4-4",
+            "bestName": "Charizard",
+            "inliers": 22,
+            "artworkInliers": 3
+          },
+          {
+            "quad": [
+              {
+                "x": 553.75,
+                "y": 417.5
+              },
+              {
+                "x": 772.5,
+                "y": 422.5
+              },
+              {
+                "x": 773.75,
+                "y": 730
+              },
+              {
+                "x": 552.5,
+                "y": 727.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-6",
+              "pokemon:base1-5",
+              "pokemon:base4-86",
+              "pokemon:basep-44",
+              "pokemon:base5-12",
+              "pokemon:base5-34",
+              "pokemon:basep-3",
+              "pokemon:base5-51"
+            ],
+            "bestKey": "pokemon:base4-6",
+            "bestName": "Clefairy",
+            "inliers": 20,
+            "artworkInliers": 6
+          },
+          {
+            "quad": [
+              {
+                "x": 796.25,
+                "y": 415
+              },
+              {
+                "x": 1016.25,
+                "y": 406.25
+              },
+              {
+                "x": 1032.5,
+                "y": 713.75
+              },
+              {
+                "x": 812.5,
+                "y": 720
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-7",
+              "pokemon:base3-23",
+              "pokemon:base2-8",
+              "pokemon:base4-15",
+              "pokemon:base1-6",
+              "pokemon:base4-14",
+              "pokemon:bw11-39",
+              "pokemon:bw11-42"
+            ],
+            "bestKey": "pokemon:base4-7",
+            "bestName": "Gyarados",
+            "inliers": 31,
+            "artworkInliers": 5
+          },
+          {
+            "quad": [
+              {
+                "x": 281.25,
+                "y": 70
+              },
+              {
+                "x": 496.25,
+                "y": 73.75
+              },
+              {
+                "x": 488.75,
+                "y": 376.25
+              },
+              {
+                "x": 266.25,
+                "y": 367.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-1",
+              "pokemon:base1-1",
+              "pokemon:base2-14",
+              "pokemon:base5-24",
+              "pokemon:base4-11",
+              "pokemon:base2-40",
+              "pokemon:base4-53",
+              "pokemon:base2-7"
+            ],
+            "bestKey": "pokemon:base4-1",
+            "bestName": "Alakazam",
+            "inliers": 29,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 547.5,
+                "y": 71.25
+              },
+              {
+                "x": 761.25,
+                "y": 82.5
+              },
+              {
+                "x": 761.25,
+                "y": 377.5
+              },
+              {
+                "x": 545,
+                "y": 371.25
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-2",
+              "pokemon:base5-45",
+              "pokemon:base4-76",
+              "pokemon:bw4-31",
+              "pokemon:base4-50",
+              "pokemon:base2-53",
+              "pokemon:base3-25",
+              "pokemon:bw3-28"
+            ],
+            "bestKey": "pokemon:base4-2",
+            "bestName": "Blastoise",
+            "inliers": 12,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 798.75,
+                "y": 76.25
+              },
+              {
+                "x": 1012.5,
+                "y": 82.5
+              },
+              {
+                "x": 1017.5,
+                "y": 373.75
+              },
+              {
+                "x": 801.25,
+                "y": 370
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-74",
+              "pokemon:base4-88",
+              "pokemon:base5-39",
+              "pokemon:base2-52",
+              "pokemon:bw8-43",
+              "pokemon:base2-61",
+              "pokemon:base3-55",
+              "pokemon:base4-67"
+            ],
+            "bestKey": "pokemon:base4-74",
+            "bestName": "Exeggcute",
+            "inliers": 0,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 275,
+                "y": 772.5
+              },
+              {
+                "x": 506.25,
+                "y": 765
+              },
+              {
+                "x": 512.5,
+                "y": 1093.75
+              },
+              {
+                "x": 277.5,
+                "y": 1103.75
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base2-61",
+              "pokemon:base4-8",
+              "pokemon:base4-90",
+              "pokemon:base2-41",
+              "pokemon:base3-24",
+              "pokemon:base4-55",
+              "pokemon:base5-41",
+              "pokemon:base4-43"
+            ],
+            "bestKey": "pokemon:base4-8",
+            "bestName": "Hitmonchan",
+            "inliers": 24,
+            "artworkInliers": 1
+          },
+          {
+            "quad": [
+              {
+                "x": 565,
+                "y": 765
+              },
+              {
+                "x": 786.25,
+                "y": 767.5
+              },
+              {
+                "x": 791.25,
+                "y": 1092.5
+              },
+              {
+                "x": 561.25,
+                "y": 1095
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base1-32",
+              "pokemon:basep-14",
+              "pokemon:base1-8",
+              "pokemon:base1-34",
+              "pokemon:base2-10",
+              "pokemon:base4-17",
+              "pokemon:base4-46",
+              "pokemon:base5-13"
+            ],
+            "bestKey": "pokemon:base1-8",
+            "bestName": "Machamp",
+            "inliers": 15,
+            "artworkInliers": 6
+          },
+          {
+            "quad": [
+              {
+                "x": 821.25,
+                "y": 752.5
+              },
+              {
+                "x": 1040,
+                "y": 757.5
+              },
+              {
+                "x": 1050,
+                "y": 1082.5
+              },
+              {
+                "x": 822.5,
+                "y": 1077.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-9",
+              "pokemon:base1-9",
+              "pokemon:base2-20",
+              "pokemon:base3-29",
+              "pokemon:base4-55",
+              "pokemon:bw8-75",
+              "pokemon:base3-24",
+              "pokemon:bw8-10"
+            ],
+            "bestKey": "pokemon:base4-9",
+            "bestName": "Magneton",
+            "inliers": 23,
+            "artworkInliers": 0
+          }
+        ]
+      },
+      {
+        "references": 2000,
+        "file": "alakazam.webp",
+        "sha256": "5ec93aebdbdff13112f2a04c674fd96847eec8cb90a914ece43b74215e2e282d",
+        "detected": 0,
+        "identityEligible": 0,
+        "detections": []
+      },
+      {
+        "references": 2000,
+        "file": "pikachu-table.jpeg",
+        "sha256": "e554e460e5c04e9a3b42c129518204572f23af11ffb01d89ba54f9d4429fbb92",
+        "detected": 0,
+        "identityEligible": 0,
+        "detections": []
+      },
+      {
+        "references": 2000,
+        "file": "binder-train.jpeg",
+        "sha256": "a946fe7d18457ac2a3ad44dde50e5146ec07fcc11484544bb5927c807c726a55",
+        "detected": 2,
+        "identityEligible": 2,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 770.6666666666666,
+                "y": 976
+              },
+              {
+                "x": 1234.6666666666667,
+                "y": 962.6666666666666
+              },
+              {
+                "x": 1258.6666666666667,
+                "y": 1605.3333333333333
+              },
+              {
+                "x": 792,
+                "y": 1621.3333333333333
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-35",
+              "pokemon:base3-27",
+              "pokemon:base3-12",
+              "pokemon:base1-24",
+              "pokemon:base2-13",
+              "pokemon:base4-10",
+              "pokemon:base4-46",
+              "pokemon:base5-26"
+            ],
+            "bestKey": "pokemon:base4-35",
+            "bestName": "Charmeleon",
+            "inliers": 31,
+            "artworkInliers": 11
+          },
+          {
+            "quad": [
+              {
+                "x": 784,
+                "y": 1674.6666666666667
+              },
+              {
+                "x": 1256,
+                "y": 1680
+              },
+              {
+                "x": 1264,
+                "y": 2416
+              },
+              {
+                "x": 768,
+                "y": 2408
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-63",
+              "pokemon:base1-42",
+              "pokemon:bw3-50",
+              "pokemon:bw11-22",
+              "pokemon:bw6-35",
+              "pokemon:bw10-18",
+              "pokemon:bw11-30",
+              "pokemon:bw3-27"
+            ],
+            "bestKey": "pokemon:base4-63",
+            "bestName": "Wartortle",
+            "inliers": 31,
+            "artworkInliers": 15
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "ebay_starter_countertop.jpg",
+        "sha256": "9ca1f41796ee44c420221f9a1a607ae93126e4e97b5fe46bad2c62e9b3957c67",
+        "detected": 4,
+        "identityEligible": 4,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 475,
+                "y": 565
+              },
+              {
+                "x": 788.75,
+                "y": 553.75
+              },
+              {
+                "x": 820,
+                "y": 1017.5
+              },
+              {
+                "x": 487.5,
+                "y": 1025
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:lc-95",
+              "pokemon:base4-93",
+              "pokemon:base2-53",
+              "pokemon:bw6-30",
+              "pokemon:base4-42",
+              "pokemon:lc-45",
+              "pokemon:base3-38",
+              "pokemon:base4-76"
+            ],
+            "bestKey": "pokemon:base4-93",
+            "bestName": "Squirtle",
+            "inliers": 60,
+            "artworkInliers": 15
+          },
+          {
+            "quad": [
+              {
+                "x": 73.75,
+                "y": 548.75
+              },
+              {
+                "x": 381.25,
+                "y": 556.25
+              },
+              {
+                "x": 363.75,
+                "y": 1016.25
+              },
+              {
+                "x": 31.25,
+                "y": 1006.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-87",
+              "pokemon:base1-58",
+              "pokemon:basep-2",
+              "pokemon:neo4-71",
+              "pokemon:dp2-67",
+              "pokemon:gym1-60",
+              "pokemon:neo4-56",
+              "pokemon:base4-82"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 53,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 478.75,
+                "y": 131.25
+              },
+              {
+                "x": 763.75,
+                "y": 121.25
+              },
+              {
+                "x": 798.75,
+                "y": 506.25
+              },
+              {
+                "x": 488.75,
+                "y": 513.75
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:lc-68",
+              "pokemon:base4-67",
+              "pokemon:base4-74",
+              "pokemon:base2-49",
+              "pokemon:base4-66",
+              "pokemon:lc-75",
+              "pokemon:base4-68",
+              "pokemon:si1-9"
+            ],
+            "bestKey": "pokemon:lc-68",
+            "bestName": "Bulbasaur",
+            "inliers": 48,
+            "artworkInliers": 18
+          },
+          {
+            "quad": [
+              {
+                "x": 103.75,
+                "y": 123.75
+              },
+              {
+                "x": 385,
+                "y": 122.5
+              },
+              {
+                "x": 383.75,
+                "y": 506.25
+              },
+              {
+                "x": 75,
+                "y": 511.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:base4-69",
+              "pokemon:lc-70",
+              "pokemon:base1-46",
+              "pokemon:neo2-19",
+              "pokemon:base2-49",
+              "pokemon:base4-42",
+              "pokemon:hgss3-51",
+              "pokemon:base4-66"
+            ],
+            "bestKey": "pokemon:lc-70",
+            "bestName": "Charmander",
+            "inliers": 59,
+            "artworkInliers": 17
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "ebay_pikachu_wood.jpg",
+        "sha256": "e7bcf0e2dcb58802fbd81fb2730cb7d7876175a5c12f3ac2c811ea1a74ee754d",
+        "detected": 1,
+        "identityEligible": 1,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 340,
+                "y": 348.33333333333337
+              },
+              {
+                "x": 863.3333333333334,
+                "y": 335
+              },
+              {
+                "x": 885,
+                "y": 1071.6666666666667
+              },
+              {
+                "x": 346.6666666666667,
+                "y": 1083.3333333333335
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:base4-87",
+              "pokemon:base1-58",
+              "pokemon:base4-45",
+              "pokemon:basep-2",
+              "pokemon:bw7-19",
+              "pokemon:neo4-71",
+              "pokemon:sm12-149",
+              "pokemon:dp2-67"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 52,
+            "artworkInliers": 20
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "ebay_starters_textured.jpg",
+        "sha256": "f89fe4e50a1a701657791d742ce08c2b2354e8410d53d46c4f9b0ed0e4a310a9",
+        "detected": 1,
+        "identityEligible": 1,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 468.75,
+                "y": 620
+              },
+              {
+                "x": 856.25,
+                "y": 633.75
+              },
+              {
+                "x": 867.5,
+                "y": 1155
+              },
+              {
+                "x": 480,
+                "y": 1150
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:base4-3",
+              "pokemon:base4-87",
+              "pokemon:gym2-74",
+              "pokemon:base2-2",
+              "pokemon:base1-58",
+              "pokemon:dp3-1",
+              "pokemon:ex11-3",
+              "pokemon:neo1-43"
+            ],
+            "bestKey": "pokemon:base4-87",
+            "bestName": "Pikachu",
+            "inliers": 64,
+            "artworkInliers": 16
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "tcs_promos.jpg",
+        "sha256": "f07d76cb8203aa5024c34492b65f5e9f171ebfda741e0284509d086d3f172ffb",
+        "detected": 9,
+        "identityEligible": 9,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 445.83333333333337,
+                "y": 1297.9166666666667
+              },
+              {
+                "x": 806.25,
+                "y": 1287.5
+              },
+              {
+                "x": 816.6666666666667,
+                "y": 1808.3333333333335
+              },
+              {
+                "x": 450,
+                "y": 1820.8333333333335
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-7",
+              "pokemon:base5-50",
+              "pokemon:base2-17",
+              "pokemon:neo1-72",
+              "pokemon:gym2-67",
+              "pokemon:neo1-65",
+              "pokemon:gym1-82",
+              "pokemon:basep-32"
+            ],
+            "bestKey": "pokemon:basep-7",
+            "bestName": "Jigglypuff",
+            "inliers": 49,
+            "artworkInliers": 21
+          },
+          {
+            "quad": [
+              {
+                "x": 856.25,
+                "y": 1295.8333333333335
+              },
+              {
+                "x": 1214.5833333333335,
+                "y": 1285.4166666666667
+              },
+              {
+                "x": 1231.25,
+                "y": 1800
+              },
+              {
+                "x": 866.6666666666667,
+                "y": 1812.5
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-8",
+              "pokemon:basep-9",
+              "pokemon:base4-10",
+              "pokemon:neo1-58",
+              "pokemon:neo1-72",
+              "pokemon:bw2-87",
+              "pokemon:dp7-10",
+              "pokemon:bw2-58"
+            ],
+            "bestKey": "pokemon:basep-8",
+            "bestName": "Mew",
+            "inliers": 47,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 1268.75,
+                "y": 1289.5833333333335
+              },
+              {
+                "x": 1618.75,
+                "y": 1275
+              },
+              {
+                "x": 1645.8333333333335,
+                "y": 1785.4166666666667
+              },
+              {
+                "x": 1287.5,
+                "y": 1804.1666666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-8",
+              "pokemon:basep-9",
+              "pokemon:neo1-58",
+              "pokemon:gym2-60",
+              "pokemon:lc-87",
+              "pokemon:base3-39",
+              "pokemon:basep-3",
+              "pokemon:base4-10"
+            ],
+            "bestKey": "pokemon:basep-8",
+            "bestName": "Mew",
+            "inliers": 37,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 452.08333333333337,
+                "y": 725
+              },
+              {
+                "x": 810.4166666666667,
+                "y": 733.3333333333334
+              },
+              {
+                "x": 808.3333333333334,
+                "y": 1231.25
+              },
+              {
+                "x": 443.75,
+                "y": 1231.25
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-4",
+              "pokemon:gym1-96",
+              "pokemon:base5-34",
+              "pokemon:bw7-14",
+              "pokemon:ecard1-155",
+              "pokemon:lc-11",
+              "pokemon:basep-44",
+              "pokemon:dp7-39"
+            ],
+            "bestKey": "pokemon:basep-4",
+            "bestName": "Pikachu",
+            "inliers": 62,
+            "artworkInliers": 25
+          },
+          {
+            "quad": [
+              {
+                "x": 847.9166666666667,
+                "y": 731.25
+              },
+              {
+                "x": 1204.1666666666667,
+                "y": 718.75
+              },
+              {
+                "x": 1218.75,
+                "y": 1222.9166666666667
+              },
+              {
+                "x": 864.5833333333334,
+                "y": 1235.4166666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-5",
+              "pokemon:ecard1-46",
+              "pokemon:base3-19",
+              "pokemon:bw8-28",
+              "pokemon:base2-34",
+              "pokemon:ex4-49",
+              "pokemon:neo2-34",
+              "pokemon:ecard3-91"
+            ],
+            "bestKey": "pokemon:basep-5",
+            "bestName": "Dragonite",
+            "inliers": 43,
+            "artworkInliers": 15
+          },
+          {
+            "quad": [
+              {
+                "x": 1247.9166666666667,
+                "y": 729.1666666666667
+              },
+              {
+                "x": 1604.1666666666667,
+                "y": 718.75
+              },
+              {
+                "x": 1618.75,
+                "y": 1220.8333333333335
+              },
+              {
+                "x": 1264.5833333333335,
+                "y": 1229.1666666666667
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-6",
+              "pokemon:lc-47",
+              "pokemon:neo2-33",
+              "pokemon:base4-44",
+              "pokemon:neo4-7",
+              "pokemon:gym1-40",
+              "pokemon:neo4-28",
+              "pokemon:gym1-65"
+            ],
+            "bestKey": "pokemon:basep-6",
+            "bestName": "Arcanine",
+            "inliers": 56,
+            "artworkInliers": 24
+          },
+          {
+            "quad": [
+              {
+                "x": 447.9166666666667,
+                "y": 170.83333333333334
+              },
+              {
+                "x": 806.25,
+                "y": 183.33333333333334
+              },
+              {
+                "x": 804.1666666666667,
+                "y": 672.9166666666667
+              },
+              {
+                "x": 441.6666666666667,
+                "y": 668.75
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-1",
+              "pokemon:base3-7",
+              "pokemon:base1-62",
+              "pokemon:base1-53",
+              "pokemon:lc-13",
+              "pokemon:base3-5",
+              "pokemon:base5-11",
+              "pokemon:dp6-109"
+            ],
+            "bestKey": "pokemon:basep-1",
+            "bestName": "Pikachu",
+            "inliers": 50,
+            "artworkInliers": 12
+          },
+          {
+            "quad": [
+              {
+                "x": 843.75,
+                "y": 191.66666666666669
+              },
+              {
+                "x": 1193.75,
+                "y": 181.25
+              },
+              {
+                "x": 1214.5833333333335,
+                "y": 668.75
+              },
+              {
+                "x": 858.3333333333334,
+                "y": 683.3333333333334
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-2",
+              "pokemon:basep-15",
+              "pokemon:base4-51",
+              "pokemon:neo4-48",
+              "pokemon:base2-7",
+              "pokemon:ecard2-70",
+              "pokemon:neo4-56",
+              "pokemon:gym1-21"
+            ],
+            "bestKey": "pokemon:basep-2",
+            "bestName": "Electabuzz",
+            "inliers": 49,
+            "artworkInliers": 21
+          },
+          {
+            "quad": [
+              {
+                "x": 1250,
+                "y": 185.41666666666669
+              },
+              {
+                "x": 1597.9166666666667,
+                "y": 189.58333333333334
+              },
+              {
+                "x": 1608.3333333333335,
+                "y": 675
+              },
+              {
+                "x": 1254.1666666666667,
+                "y": 670.8333333333334
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:basep-3",
+              "pokemon:lc-87",
+              "pokemon:gym2-59",
+              "pokemon:base1-5",
+              "pokemon:lc-67",
+              "pokemon:basep-44",
+              "pokemon:neo2-47",
+              "pokemon:neo2-17"
+            ],
+            "bestKey": "pokemon:basep-3",
+            "bestName": "Mewtwo",
+            "inliers": 48,
+            "artworkInliers": 14
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "ebay_base_blue_binder.jpg",
+        "sha256": "8d0bdb016832f9db9352bf9d35ba73cac5f6a79e6b499c6d005fe26488f83b1c",
+        "detected": 9,
+        "identityEligible": 0,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 271.25,
+                "y": 415
+              },
+              {
+                "x": 493.75,
+                "y": 418.75
+              },
+              {
+                "x": 492.5,
+                "y": 730
+              },
+              {
+                "x": 261.25,
+                "y": 730
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:gym2-62",
+              "pokemon:lc-73",
+              "pokemon:base3-43",
+              "pokemon:sm115-1",
+              "pokemon:base5-54",
+              "pokemon:neo1-52",
+              "pokemon:base4-17",
+              "pokemon:lc-3"
+            ],
+            "bestKey": "pokemon:lc-3",
+            "bestName": "Charizard",
+            "inliers": 16,
+            "artworkInliers": 2
+          },
+          {
+            "quad": [
+              {
+                "x": 553.75,
+                "y": 417.5
+              },
+              {
+                "x": 772.5,
+                "y": 422.5
+              },
+              {
+                "x": 773.75,
+                "y": 730
+              },
+              {
+                "x": 552.5,
+                "y": 727.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-6",
+              "pokemon:gym2-69",
+              "pokemon:base1-5",
+              "pokemon:base4-86",
+              "pokemon:basep-44",
+              "pokemon:lc-85",
+              "pokemon:base5-12",
+              "pokemon:gym1-72"
+            ],
+            "bestKey": "pokemon:base4-6",
+            "bestName": "Clefairy",
+            "inliers": 20,
+            "artworkInliers": 6
+          },
+          {
+            "quad": [
+              {
+                "x": 796.25,
+                "y": 415
+              },
+              {
+                "x": 1016.25,
+                "y": 406.25
+              },
+              {
+                "x": 1032.5,
+                "y": 713.75
+              },
+              {
+                "x": 812.5,
+                "y": 720
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-7",
+              "pokemon:lc-12",
+              "pokemon:lc-87",
+              "pokemon:base3-23",
+              "pokemon:base2-8",
+              "pokemon:base4-15",
+              "pokemon:base1-6",
+              "pokemon:base4-14"
+            ],
+            "bestKey": "pokemon:lc-12",
+            "bestName": "Gyarados",
+            "inliers": 35,
+            "artworkInliers": 6
+          },
+          {
+            "quad": [
+              {
+                "x": 281.25,
+                "y": 70
+              },
+              {
+                "x": 496.25,
+                "y": 73.75
+              },
+              {
+                "x": 488.75,
+                "y": 376.25
+              },
+              {
+                "x": 266.25,
+                "y": 367.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:lc-1",
+              "pokemon:base4-1",
+              "pokemon:base1-1",
+              "pokemon:base2-14",
+              "pokemon:base5-24",
+              "pokemon:gym2-7",
+              "pokemon:base4-11",
+              "pokemon:ecard1-26"
+            ],
+            "bestKey": "pokemon:base4-1",
+            "bestName": "Alakazam",
+            "inliers": 29,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 547.5,
+                "y": 71.25
+              },
+              {
+                "x": 761.25,
+                "y": 82.5
+              },
+              {
+                "x": 761.25,
+                "y": 377.5
+              },
+              {
+                "x": 545,
+                "y": 371.25
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-2",
+              "pokemon:base5-45",
+              "pokemon:neo1-31",
+              "pokemon:base4-76",
+              "pokemon:bw4-31",
+              "pokemon:neo1-82",
+              "pokemon:neo4-45",
+              "pokemon:neo2-37"
+            ],
+            "bestKey": "pokemon:base4-2",
+            "bestName": "Blastoise",
+            "inliers": 12,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 798.75,
+                "y": 76.25
+              },
+              {
+                "x": 1012.5,
+                "y": 82.5
+              },
+              {
+                "x": 1017.5,
+                "y": 373.75
+              },
+              {
+                "x": 801.25,
+                "y": 370
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-74",
+              "pokemon:base4-88",
+              "pokemon:base5-39",
+              "pokemon:ex6-69",
+              "pokemon:lc-68",
+              "pokemon:neo2-30",
+              "pokemon:base2-52",
+              "pokemon:bw8-43"
+            ],
+            "bestKey": "pokemon:neo2-30",
+            "bestName": "Smeargle",
+            "inliers": 6,
+            "artworkInliers": 0
+          },
+          {
+            "quad": [
+              {
+                "x": 275,
+                "y": 772.5
+              },
+              {
+                "x": 506.25,
+                "y": 765
+              },
+              {
+                "x": 512.5,
+                "y": 1093.75
+              },
+              {
+                "x": 277.5,
+                "y": 1103.75
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:lc-27",
+              "pokemon:base2-61",
+              "pokemon:base4-8",
+              "pokemon:base4-90",
+              "pokemon:base2-41",
+              "pokemon:neo4-89",
+              "pokemon:base3-24",
+              "pokemon:base4-55"
+            ],
+            "bestKey": "pokemon:base4-8",
+            "bestName": "Hitmonchan",
+            "inliers": 24,
+            "artworkInliers": 1
+          },
+          {
+            "quad": [
+              {
+                "x": 565,
+                "y": 765
+              },
+              {
+                "x": 786.25,
+                "y": 767.5
+              },
+              {
+                "x": 791.25,
+                "y": 1092.5
+              },
+              {
+                "x": 561.25,
+                "y": 1095
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:neo3-4",
+              "pokemon:base1-32",
+              "pokemon:lc-25",
+              "pokemon:basep-14",
+              "pokemon:neo4-12",
+              "pokemon:base1-8",
+              "pokemon:gym1-2",
+              "pokemon:lc-15"
+            ],
+            "bestKey": "pokemon:lc-15",
+            "bestName": "Machamp",
+            "inliers": 21,
+            "artworkInliers": 3
+          },
+          {
+            "quad": [
+              {
+                "x": 821.25,
+                "y": 752.5
+              },
+              {
+                "x": 1040,
+                "y": 757.5
+              },
+              {
+                "x": 1050,
+                "y": 1082.5
+              },
+              {
+                "x": 822.5,
+                "y": 1077.5
+              }
+            ],
+            "state": "unknown",
+            "autoEligible": false,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-9",
+              "pokemon:base1-9",
+              "pokemon:base2-20",
+              "pokemon:base3-29",
+              "pokemon:gym1-58",
+              "pokemon:base4-55",
+              "pokemon:neo1-33",
+              "pokemon:neo2-34"
+            ],
+            "bestKey": "pokemon:base4-9",
+            "bestName": "Magneton",
+            "inliers": 23,
+            "artworkInliers": 0
+          }
+        ]
+      },
+      {
+        "references": 10000,
+        "file": "alakazam.webp",
+        "sha256": "5ec93aebdbdff13112f2a04c674fd96847eec8cb90a914ece43b74215e2e282d",
+        "detected": 0,
+        "identityEligible": 0,
+        "detections": []
+      },
+      {
+        "references": 10000,
+        "file": "pikachu-table.jpeg",
+        "sha256": "e554e460e5c04e9a3b42c129518204572f23af11ffb01d89ba54f9d4429fbb92",
+        "detected": 0,
+        "identityEligible": 0,
+        "detections": []
+      },
+      {
+        "references": 10000,
+        "file": "binder-train.jpeg",
+        "sha256": "a946fe7d18457ac2a3ad44dde50e5146ec07fcc11484544bb5927c807c726a55",
+        "detected": 2,
+        "identityEligible": 2,
+        "detections": [
+          {
+            "quad": [
+              {
+                "x": 770.6666666666666,
+                "y": 976
+              },
+              {
+                "x": 1234.6666666666667,
+                "y": 962.6666666666666
+              },
+              {
+                "x": 1258.6666666666667,
+                "y": 1605.3333333333333
+              },
+              {
+                "x": 792,
+                "y": 1621.3333333333333
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": true,
+            "shortlist": [
+              "pokemon:lc-37",
+              "pokemon:base4-35",
+              "pokemon:base3-27",
+              "pokemon:base3-12",
+              "pokemon:neo3-25",
+              "pokemon:lc-30",
+              "pokemon:ecard1-28",
+              "pokemon:base1-24"
+            ],
+            "bestKey": "pokemon:lc-37",
+            "bestName": "Charmeleon",
+            "inliers": 38,
+            "artworkInliers": 10
+          },
+          {
+            "quad": [
+              {
+                "x": 784,
+                "y": 1674.6666666666667
+              },
+              {
+                "x": 1256,
+                "y": 1680
+              },
+              {
+                "x": 1264,
+                "y": 2416
+              },
+              {
+                "x": 768,
+                "y": 2408
+              }
+            ],
+            "state": "verified",
+            "autoEligible": true,
+            "printingAmbiguous": false,
+            "shortlist": [
+              "pokemon:base4-63",
+              "pokemon:base1-42",
+              "pokemon:g1-21",
+              "pokemon:bw3-50",
+              "pokemon:bw11-22",
+              "pokemon:bw6-35",
+              "pokemon:bw10-18",
+              "pokemon:bw11-30"
+            ],
+            "bestKey": "pokemon:base4-63",
+            "bestName": "Wartortle",
+            "inliers": 31,
+            "artworkInliers": 15
+          }
+        ]
+      }
+    ]
+  },
+  "memory": {
+    "warning": "Isolated Node process with forcedGC; includes entire sparse96 engine/reference objects and WASM runtime, not just hash index. Process-level memory is not a browser/mobile peak estimate. Concurrent extraction elsewhere may affect load time.",
+    "before": {
+      "rss": 271187968,
+      "heapTotal": 86343680,
+      "heapUsed": 51245328,
+      "external": 266857519,
+      "arrayBuffers": 79282513
+    },
+    "after": {
+      "rss": 479760384,
+      "heapTotal": 260169728,
+      "heapUsed": 121043576,
+      "external": 268448497,
+      "arrayBuffers": 79544657
+    },
+    "afterDispose": {
+      "rss": 478834688,
+      "heapTotal": 207339520,
+      "heapUsed": 59386704,
+      "external": 267114394,
+      "arrayBuffers": 79282513
+    },
+    "delta": {
+      "rss": 208572416,
+      "heapTotal": 173826048,
+      "heapUsed": 69798248,
+      "external": 1590978,
+      "arrayBuffers": 262144
+    },
+    "loadMs": 2525.0535550000004,
+    "index": {
+      "count": 10000,
+      "wordCapacity": 16384,
+      "numericBytes": 262144,
+      "slotMap": 10000
+    }
+  },
+  "prototypeCapacityTiming": {
+    "warning": "Hash-scan capacity timing only. Above10k, repeated actual hash rows create synthetic load, not additional reference coverage or accuracy evidence. No ORB runs and no photos.",
+    "cases": [
+      {
+        "references": 2000,
+        "distinctSourceHashes": 2000,
+        "typedBytes": 32000,
+        "buildMs": 1.2926600000000121,
+        "p50": 0.10469800000009855,
+        "p95": 0.19792899999993097,
+        "max": 0.44170700000000807,
+        "before": {
+          "rss": 192630784,
+          "heapTotal": 244834304,
+          "heapUsed": 122964976,
+          "external": 4237987,
+          "arrayBuffers": 220235
+        },
+        "after": {
+          "rss": 192892928,
+          "heapTotal": 244834304,
+          "heapUsed": 124228792,
+          "external": 4270027,
+          "arrayBuffers": 252235
+        }
+      },
+      {
+        "references": 10000,
+        "distinctSourceHashes": 10000,
+        "typedBytes": 160000,
+        "buildMs": 5.414367999999968,
+        "p50": 0.4524430000000166,
+        "p95": 0.6077770000000555,
+        "max": 5.065322000000037,
+        "before": {
+          "rss": 228057088,
+          "heapTotal": 244834304,
+          "heapUsed": 157615512,
+          "external": 4270027,
+          "arrayBuffers": 252235
+        },
+        "after": {
+          "rss": 235134976,
+          "heapTotal": 244834304,
+          "heapUsed": 163515736,
+          "external": 4430027,
+          "arrayBuffers": 412235
+        }
+      },
+      {
+        "references": 20000,
+        "distinctSourceHashes": 10000,
+        "typedBytes": 320000,
+        "buildMs": 8.926746999999978,
+        "p50": 1.0250369999999975,
+        "p95": 1.7436109999999871,
+        "max": 3.811920999999984,
+        "before": {
+          "rss": 262754304,
+          "heapTotal": 244600832,
+          "heapUsed": 128226760,
+          "external": 4430027,
+          "arrayBuffers": 372375
+        },
+        "after": {
+          "rss": 272191488,
+          "heapTotal": 245133312,
+          "heapUsed": 137577248,
+          "external": 4710167,
+          "arrayBuffers": 692375
+        }
+      },
+      {
+        "references": 60000,
+        "distinctSourceHashes": 10000,
+        "typedBytes": 960000,
+        "buildMs": 64.676875,
+        "p50": 2.6163570000001073,
+        "p95": 3.5846490000001268,
+        "max": 5.4810399999998936,
+        "before": {
+          "rss": 288575488,
+          "heapTotal": 245133312,
+          "heapUsed": 154179904,
+          "external": 4710167,
+          "arrayBuffers": 692375
+        },
+        "after": {
+          "rss": 325537792,
+          "heapTotal": 260108288,
+          "heapUsed": 147173856,
+          "external": 5670167,
+          "arrayBuffers": 1492375
+        }
+      }
+    ]
+  }
+}

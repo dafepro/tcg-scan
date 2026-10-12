@@ -32,12 +32,6 @@ export function extractNameCandidates(text: string, game: Game): string[] {
       .trim();
     if (game === "pokemon") {
       if (
-        /^(?:pok[eé]mon|energy|trainer|item|supporter|stadium|ability)\s*[:·]?$/i.test(
-          line,
-        )
-      )
-        continue;
-      if (
         /^(?:evolves? from|put .+ on|weakness|resistance|retreat|illus\.?|illustrator|rule box|[vV](?:star|max)? rule)\b/i.test(
           line,
         )
@@ -75,6 +69,15 @@ export function extractNameCandidates(text: string, game: Game): string[] {
         .trim();
     }
     line = line.replace(/^[|:;-]+|[|:;-]+$/g, "").trim();
+    // Stage/HP cleanup can reveal a generic label (e.g. Basic Pokémon).
+    // Check afterwards, without excluding real names like Pokémon Center Lady.
+    if (
+      game === "pokemon" &&
+      /^(?:pok[eé]mon|energy|trainer|item|supporter|stadium|ability)\s*[:·]?$/i.test(
+        line,
+      )
+    )
+      continue;
     if (line.length < 3 || line.length > 65 || !/[\p{L}]{2}/u.test(line))
       continue;
     if (
@@ -150,9 +153,13 @@ export function prepareImage(
   return canvas;
 }
 
-function prepareTitle(image: HTMLCanvasElement): HTMLCanvasElement {
+function prepareTitle(
+  image: HTMLCanvasElement,
+  fraction = 0.24,
+  enhance = true,
+): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  const cropHeight = Math.max(1, Math.round(image.height * 0.24));
+  const cropHeight = Math.max(1, Math.round(image.height * fraction));
   const scale = Math.min(3, 1600 / image.width);
   canvas.width = Math.round(image.width * scale);
   canvas.height = Math.round(cropHeight * scale);
@@ -169,6 +176,9 @@ function prepareTitle(image: HTMLCanvasElement): HTMLCanvasElement {
     canvas.width,
     canvas.height,
   );
+  // A second pass preserves the original colors: contrast enhancement can
+  // erase edges of dark lettering on textured/yellow Pokémon headers.
+  if (!enhance) return canvas;
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < pixels.data.length; i += 4) {
     const gray =
@@ -205,7 +215,7 @@ function canvasBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
 }
 
 /**
- * Images remain on-device. Only the English language model is downloaded.
+ * Images remain on-device. Runtime and English model load from this app's origin.
  *
  * We own the native worker BEFORE initialization so even a stalled first-load
  * model fetch can be terminated immediately. Tesseract 6 createWorker hides its
@@ -252,7 +262,7 @@ export async function recognizeCard(
     () =>
       stop(
         new Error(
-          "The card reader took too long. Check your connection for the first model download, or try a smaller photo.",
+          "The card reader took too long. Check that this site's OCR assets loaded, or try a smaller photo.",
         ),
       ),
     90_000,
@@ -267,9 +277,9 @@ export async function recognizeCard(
       if (data.status === "recognizing text") {
         onProgress({
           label:
-            phase === "title"
-              ? "Reading the card title…"
-              : "Reading the rest of the card…",
+            phase === "full"
+              ? "Reading the rest of the card…"
+              : "Reading the card title…",
           progress:
             phase === "title" ? 0.35 + fraction * 0.35 : 0.72 + fraction * 0.25,
         });
@@ -341,7 +351,7 @@ export async function recognizeCard(
     await request("loadLanguage", {
       langs: "eng",
       options: {
-        langPath: "https://tessdata.projectnaptha.com/4.0.0",
+        langPath: `${base}ocr/`,
         gzip: true,
         lstmOnly: true,
       },
@@ -353,24 +363,52 @@ export async function recognizeCard(
     phase = "title";
     const titleBytes = await canvasBytes(prepareTitle(image));
     throwIfAborted(signal);
-    const title = await request<{ text: string }>(
+    const title = await request<{ text: string; confidence: number }>(
       "recognize",
       { image: titleBytes, options: {}, output: { text: true } },
       [titleBytes.buffer as ArrayBuffer],
     );
     let text = title.text;
     let candidates = extractNameCandidates(text, game);
-    if (!candidates.length) {
+    const confidence = (read: { confidence: number }) =>
+      Number.isFinite(read.confidence) ? read.confidence : 0;
+    let bestConfidence = confidence(title);
+    const consider = (read: { text: string; confidence: number }) => {
+      const next = extractNameCandidates(read.text, game);
+      if (
+        next.length &&
+        (!candidates.length || confidence(read) > bestConfidence)
+      ) {
+        text = read.text;
+        candidates = next;
+        bestConfidence = confidence(read);
+      }
+    };
+    // Pokémon artwork can dominate the broad title crop. Retry a tighter,
+    // unaltered header only when that first reading is absent or weak.
+    // This is a retry heuristic, not a confidence claim about card identity.
+    if (game === "pokemon" && (!candidates.length || bestConfidence < 70)) {
+      const headerBytes = await canvasBytes(prepareTitle(image, 0.14, false));
+      throwIfAborted(signal);
+      const header = await request<{ text: string; confidence: number }>(
+        "recognize",
+        { image: headerBytes, options: {}, output: { text: true } },
+        [headerBytes.buffer as ArrayBuffer],
+      );
+      consider(header);
+    }
+    if (!candidates.length || (game === "pokemon" && bestConfidence < 70)) {
       phase = "full";
       const fullBytes = await canvasBytes(image);
       throwIfAborted(signal);
-      const full = await request<{ text: string }>(
+      const full = await request<{ text: string; confidence: number }>(
         "recognize",
         { image: fullBytes, options: {}, output: { text: true } },
         [fullBytes.buffer as ArrayBuffer],
       );
-      text = full.text;
-      candidates = extractNameCandidates(text, game);
+      // Keep a useful earlier suggestion if the fallback found nothing.
+      consider(full);
+      if (!candidates.length) text = full.text;
     }
     onProgress({
       label: candidates.length

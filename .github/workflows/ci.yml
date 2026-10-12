@@ -30,9 +30,11 @@ jobs:
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
       - run: npx playwright install chromium
+        timeout-minutes: 5
       - run: npm run test:e2e
         env:
           RUN_LIVE_OCR: "1"
+          RUN_LIVE_VISION: "1"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -31,7 +31,9 @@ export function addToCollection(
       entry.card.id === card.id &&
       entry.card.game === card.game &&
       entry.condition === condition &&
-      entry.finish === finish,
+      entry.finish === finish &&
+      !entry.verification &&
+      !entry.scanEventId,
   );
   if (match && match.quantity + quantity > MAX_QUANTITY)
     throw new Error("This entry would exceed 9,999 cards.");
@@ -58,8 +60,10 @@ export function referenceTotals(collection: CollectionEntry[]) {
   const totals = { USD: 0, EUR: 0, priced: 0, unpriced: 0 };
   for (const entry of collection) {
     const price =
-      entry.card.prices.find((p) => p.currency === "USD") ??
-      entry.card.prices.find((p) => p.currency === "EUR");
+      entry.verification === "identity-only"
+        ? undefined
+        : (entry.card.prices.find((p) => p.currency === "USD") ??
+          entry.card.prices.find((p) => p.currency === "EUR"));
     if (price) {
       totals[price.currency] += price.amount * entry.quantity;
       totals.priced += entry.quantity;
@@ -155,18 +159,23 @@ export function collectionCsv(collection: CollectionEntry[]) {
       "Price source",
       "Price retrieved/updated",
       "Notes",
+      "Printing verification",
+      "Matched reference set",
+      "Matched reference number",
     ],
   ];
   for (const entry of collection) {
     const price =
-      entry.card.prices.find((p) => p.currency === "USD") ??
-      entry.card.prices[0];
+      entry.verification === "identity-only"
+        ? undefined
+        : (entry.card.prices.find((p) => p.currency === "USD") ??
+          entry.card.prices[0]);
     rows.push([
       entry.card.game,
       entry.card.name,
-      entry.card.setName,
-      entry.card.setCode,
-      entry.card.number,
+      entry.verification === "identity-only" ? "" : entry.card.setName,
+      entry.verification === "identity-only" ? "" : entry.card.setCode,
+      entry.verification === "identity-only" ? "" : entry.card.number,
       entry.quantity,
       entry.condition,
       entry.finish,
@@ -175,6 +184,9 @@ export function collectionCsv(collection: CollectionEntry[]) {
       price?.source ?? "",
       price?.updatedAt ?? "",
       entry.notes,
+      entry.verification === "identity-only" ? "Unconfirmed" : "User confirmed",
+      entry.verification === "identity-only" ? entry.card.setName : "",
+      entry.verification === "identity-only" ? entry.card.number : "",
     ]);
   }
   return "\uFEFF" + rows.map((row) => row.map(csvCell).join(",")).join("\r\n");

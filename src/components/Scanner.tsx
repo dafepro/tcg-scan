@@ -782,8 +782,8 @@ export default function Scanner({
       <div className="scanner-privacy">
         <ShieldCheck size={13} />
         <p>
-          Photos stay on your device. First scan downloads an English OCR model.
-          The detected name is used to search the card catalog.
+          Photos stay on your device. The English OCR model loads from this
+          site. The detected name is used to search the card catalog.
         </p>
       </div>
 

@@ -26,6 +26,9 @@ import {
   X,
 } from "lucide-react";
 import Scanner from "./components/Scanner";
+import ContinuousScanner from "./components/ContinuousScanner";
+import { addScanEvent, undoScanEvent } from "./lib/scan-inventory";
+import type { ReferenceMetadata } from "./lib/vision";
 import CardImage from "./components/CardImage";
 import { getCard, searchCards } from "./lib/catalog";
 import {
@@ -135,6 +138,49 @@ export default function App() {
       return false;
     }
   };
+  function durableScanChange(next: AppData): string | undefined {
+    if (initial.warning || storageConflict.current)
+      return "Saving is paused to protect your collection. Export and reload before scanning.";
+    try {
+      const current = localStorage.getItem(STORAGE_KEY);
+      if (
+        storageSnapshot.current !== undefined &&
+        current !== storageSnapshot.current
+      ) {
+        storageConflict.current = true;
+        setStorageWarning(
+          "Another tab changed this collection. Saving is paused; export and reload.",
+        );
+        return "Another tab changed your collection. Scan was not saved.";
+      }
+      const validated = parseBackup(JSON.stringify(next));
+      const warning = saveData(validated);
+      if (warning) {
+        setStorageWarning(warning);
+        return "Storage is full or blocked. Scan was not saved. Export your collection and free space.";
+      }
+      storageSnapshot.current = JSON.stringify(validated);
+      dataRef.current = validated;
+      commitData(validated);
+      return undefined;
+    } catch (error) {
+      return error instanceof Error
+        ? error.message
+        : "Could not save this scan.";
+    }
+  }
+  function saveScan(reference: ReferenceMetadata, eventId: string) {
+    return durableScanChange({
+      ...dataRef.current,
+      collection: addScanEvent(dataRef.current.collection, reference, eventId),
+    });
+  }
+  function undoScan(eventId: string) {
+    return durableScanChange({
+      ...dataRef.current,
+      collection: undoScanEvent(dataRef.current.collection, eventId),
+    });
+  }
   const totalCards = data.collection.reduce((n, e) => n + e.quantity, 0);
   const totals = referenceTotals(data.collection);
   useEffect(() => {
@@ -153,7 +199,7 @@ export default function App() {
       }
       const warning = saveData(data);
       setStorageWarning(warning);
-      storageSnapshot.current = localStorage.getItem(STORAGE_KEY);
+      if (!warning) storageSnapshot.current = JSON.stringify(data);
     } catch {
       setStorageWarning(
         "Storage is unavailable. Export your work before closing this page.",
@@ -375,7 +421,7 @@ export default function App() {
                   <span>Already in focus.</span>
                 </h1>
                 <p className="page-intro">
-                  Scan it. Check it. Make it part of your collection.
+                  Keep the camera running. Let your collection catch up.
                 </p>
               </div>
               <div className="hero-stat">
@@ -411,12 +457,26 @@ export default function App() {
               </span>
             </div>
             <div className="scan-workspace">
-              <Scanner
-                key={game}
-                game={game}
-                onRecognized={(text) => void runSearch(text, "scan")}
-                onManualSearch={() => queryInput.current?.focus()}
-              />
+              <div className="scan-main-column">
+                <ContinuousScanner
+                  key={game}
+                  game={game}
+                  onSave={saveScan}
+                  onUndo={undoScan}
+                />
+                <details className="assisted-scan">
+                  <summary>
+                    Assisted photo / text scan · for cards outside your local
+                    packs
+                  </summary>
+                  <Scanner
+                    key={game}
+                    game={game}
+                    onRecognized={(text) => void runSearch(text, "scan")}
+                    onManualSearch={() => queryInput.current?.focus()}
+                  />
+                </details>
+              </div>
               <aside className="search-panel panel">
                 <div className="panel-heading">
                   <div>
@@ -426,7 +486,8 @@ export default function App() {
                   <Search size={20} />
                 </div>
                 <p className="section-description">
-                  Search the catalog, or scan a card to find possible matches.
+                  Fallback lookup for uncovered or ambiguous cards. Live
+                  scanning uses your installed local reference packs.
                 </p>
                 <form
                   onSubmit={(e) => {
@@ -584,14 +645,14 @@ export default function App() {
                 <span className="step-number">01</span>
                 <div>
                   <h3>Bring your cards into focus</h3>
-                  <p>Good light, a flat surface, one card at a time.</p>
+                  <p>Good light, separated cards, all four edges visible.</p>
                 </div>
               </div>
               <div>
                 <span className="step-number">02</span>
                 <div>
-                  <h3>You make the final call</h3>
-                  <p>Check the name, set and printing before saving.</p>
+                  <h3>Strong matches save locally</h3>
+                  <p>Review unconfirmed printing, finish and condition.</p>
                 </div>
               </div>
               <div>
@@ -709,19 +770,22 @@ export default function App() {
               <h3>Local photos, online catalogs</h3>
               <p>
                 Camera frames and uploaded photos are processed on your device.
-                OCR downloads an English language model on first use. Extracted
-                names or IDs are sent to the selected public catalog: TCGdex,
-                Scryfall, or YGOPRODeck. Card artwork loads from those
-                providers. Your collection stays in this browser.
+                Visual matching uses installed local reference packs. Recognized
+                IDs are sent to the selected provider for automatic market
+                quotes; assisted searches send names or IDs. OCR loads its
+                English model from this site. Reference artwork loads from
+                approved provider hosts. Your collection stays in this browser.
               </p>
             </section>
             <section>
-              <h3>Always confirm a match</h3>
+              <h3>Visual identity, unconfirmed printing</h3>
               <p>
-                OCR reads text, not artwork. Glare, sleeves, unusual fonts and
-                non-English cards can reduce accuracy. Check the exact set and
-                printing. Yu-Gi-Oh! entries identify a card name/passcode and
-                may combine multiple printings.
+                Continuous scanning uses local OpenCV features and geometry.
+                Strong stable identities can save automatically, with unknown
+                condition and finish. Exact printing stays unconfirmed and is
+                excluded from value totals. Glare, sleeves, overlapping cards
+                and similar artwork can confuse recognition. Coverage is limited
+                to loaded references. Assisted OCR still requires confirmation.
               </p>
             </section>
             <section>
@@ -1210,14 +1274,22 @@ function CollectionView({
                 <div className="collection-card-info">
                   <h3>{entry.card.name}</h3>
                   <p>
+                    {entry.verification === "identity-only"
+                      ? "Visual reference: "
+                      : ""}
                     {entry.card.setName} · {entry.card.number || "—"}
                   </p>
                   <div className="collection-meta">
                     <span>{entry.condition}</span>
                     <span>{entry.finish}</span>
+                    {entry.verification && <span>Printing unconfirmed</span>}
                   </div>
                   <div className="card-bottom">
-                    <Price card={entry.card} />
+                    {entry.verification ? (
+                      <span className="muted">Verify printing to value</span>
+                    ) : (
+                      <Price card={entry.card} />
+                    )}
                     <div className="quantity-control">
                       <button
                         aria-label={`Decrease ${entry.card.name} quantity`}

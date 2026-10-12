@@ -184,6 +184,13 @@ describe("recognizeCard cancellation and worker lifecycle", () => {
         "loadLanguage",
       ),
     );
+    expect(
+      worker.postMessage.mock.calls.at(-1)?.[0].payload.options,
+    ).toMatchObject({
+      langPath: "https://test.local/ocr/",
+      gzip: true,
+      lstmOnly: true,
+    });
     controller.abort();
     await assertion;
     expect(worker.terminate).toHaveBeenCalledOnce();
@@ -276,11 +283,116 @@ describe("recognizeCard cancellation and worker lifecycle", () => {
     const payload = worker.postMessage.mock.calls.at(-1)?.[0].payload;
     expect(payload.image).toBeInstanceOf(Uint8Array);
     expect(payload.output).toEqual({ text: true });
-    worker.reply("resolve", { text: "BASIC\nHP 60\nPikachu" });
+    worker.reply("resolve", { text: "BASIC\nHP 60\nPikachu", confidence: 95 });
     await expect(promise).resolves.toEqual({
       text: "BASIC\nHP 60\nPikachu",
       candidates: ["Pikachu"],
     });
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Pokémon metadata after cleanup", () => {
+  it("rejects labels revealed by stage, HP, or delimiter cleanup", () => {
+    expect(
+      extractNameCandidates(
+        "Basic Pokémon\nPokémon 60 HP\nPokémon |\nSTAGE 2 Supporter",
+        "pokemon",
+      ),
+    ).toEqual([]);
+    expect(extractNameCandidates("Basic Pokémon\nTEL", "pokemon")).toEqual([
+      "TEL",
+    ]);
+  });
+  it("preserves short real names and names containing a generic label", () => {
+    expect(
+      extractNameCandidates("Mew\nMuk\nPokémon Center Lady", "pokemon"),
+    ).toEqual(["Mew", "Muk", "Pokémon Center Lady"]);
+  });
+});
+
+describe("weak Pokémon title retry", () => {
+  beforeEach(() => {
+    FakeWorker.instances = [];
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+      location: { href: "https://test.local/" },
+    });
+    vi.stubGlobal("Worker", FakeWorker);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    {
+      name: "replaces a noisy broad crop with a clearer header",
+      reads: [
+        { text: "Basic Pokémon\nTEL\n60 HP 2)", confidence: 66 },
+        { text: "Basic Pokémon\nPikachu\n60 HP 2", confidence: 88 },
+      ],
+      expected: ["Pikachu"],
+    },
+    {
+      name: "does not discard a useful short name when later passes are empty",
+      reads: [
+        { text: "Mew", confidence: 50 },
+        { text: "", confidence: 0 },
+        { text: "", confidence: 0 },
+      ],
+      expected: ["Mew"],
+    },
+    {
+      name: "falls through to the full image when both header readings are weak",
+      reads: [
+        { text: "TEL", confidence: 30 },
+        { text: "", confidence: 0 },
+        { text: "Basic Pokémon\nPikachu", confidence: 90 },
+      ],
+      expected: ["Pikachu"],
+    },
+  ])("$name", async ({ reads, expected }) => {
+    const { recognizeCard } = await import("./recognition");
+    const drawImage = vi.fn();
+    const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray(16) }));
+    const canvas = {
+      width: 600,
+      height: 825,
+      getContext: () => ({ drawImage, getImageData, putImageData: vi.fn() }),
+      toBlob: (cb: (blob: Blob) => void) =>
+        cb(new Blob(["png"], { type: "image/png" })),
+    };
+    vi.stubGlobal("document", { createElement: () => ({ ...canvas }) });
+    const promise = recognizeCard(
+      canvas as unknown as HTMLCanvasElement,
+      "pokemon",
+      new AbortController().signal,
+      vi.fn(),
+    );
+    const worker = FakeWorker.instances[0];
+    for (const action of [
+      "load",
+      "loadLanguage",
+      "initialize",
+      "setParameters",
+    ]) {
+      await vi.waitFor(() =>
+        expect(worker.postMessage.mock.calls.at(-1)?.[0].action).toBe(action),
+      );
+      worker.reply("resolve");
+    }
+    for (let i = 0; i < reads.length; i++) {
+      await vi.waitFor(() =>
+        expect(
+          worker.postMessage.mock.calls.filter(
+            (call) => call[0].action === "recognize",
+          ),
+        ).toHaveLength(i + 1),
+      );
+      worker.reply("resolve", reads[i]);
+    }
+    await expect(promise).resolves.toMatchObject({ candidates: expected });
+    expect(drawImage.mock.calls[0][4]).toBe(198);
+    expect(drawImage.mock.calls[1][4]).toBe(116);
+    expect(getImageData).toHaveBeenCalledTimes(1); // Retry preserves color.
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 });

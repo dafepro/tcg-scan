@@ -6,11 +6,12 @@ Runtime dependencies:
 
 - React and React DOM: MIT, https://github.com/facebook/react/blob/main/LICENSE
 - Lucide icons: ISC, https://github.com/lucide-icons/lucide/blob/main/LICENSE
+- OpenCV.js via @techstark/opencv-js: Apache-2.0, https://github.com/TechStark/opencv-js/blob/master/LICENSE and https://opencv.org/license/
 - Tesseract.js: Apache-2.0, https://github.com/naptha/tesseract.js/blob/master/LICENSE
 - Tesseract.js-core / Tesseract engine: Apache-2.0, https://github.com/naptha/tesseract.js-core/blob/master/LICENSE
-- English traineddata downloaded on demand from the Tesseract model distribution: upstream data licensing applies, https://github.com/tesseract-ocr/tessdata
+- English traineddata: Apache-2.0 upstream data, https://github.com/naptha/tessdata/blob/gh-pages/LICENSE and https://github.com/tesseract-ocr/tessdata. Installed from pinned `@tesseract.js-data/eng@1.0.0`, using `4.0.0/eng.traineddata.gz`; the package wrapper declares MIT, but no wrapper JavaScript is bundled. The build verifies the model's SHA-256, copies the data unchanged, and includes its Apache-2.0 license and provenance beside the same-origin model. The source license copy is in `licenses/tessdata-LICENSE.txt`.
 
-The build stages the installed Tesseract license files and the minified worker’s own third-party notices next to those generated runtime files in `ocr/`. React, React DOM, Scheduler, Lucide and the application license are also staged under `licenses/`. Preserve both directories when redistributing a build. All other npm dependencies retain the licenses included in their packages and lockfile metadata.
+The build stages the installed Tesseract license files and the minified worker’s own third-party notices next to those generated runtime files in `ocr/`. React, React DOM, Scheduler, Lucide, OpenCV.js and the application license are also staged under `licenses/`. Preserve both directories when redistributing a build. All other npm dependencies retain the licenses included in their packages and lockfile metadata.
 
 No remote fonts are required; the interface uses available system sans-serif fonts. The favicon and decorative card shapes are original project assets.
 

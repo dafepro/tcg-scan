@@ -138,7 +138,8 @@ export function parseBackup(text: string): AppData {
       Number(v.quantity) < 1 ||
       Number(v.quantity) > 9999 ||
       !CONDITIONS.includes(v.condition as never) ||
-      !FINISHES.includes(v.finish as never)
+      !FINISHES.includes(v.finish as never) ||
+      (v.verification !== undefined && v.verification !== "identity-only")
     )
       throw new Error("Backup contains an invalid collection entry.");
     return {
@@ -149,8 +150,16 @@ export function parseBackup(text: string): AppData {
       finish: v.finish as CollectionEntry["finish"],
       addedAt: date(v.addedAt),
       notes: str(v.notes, 5000),
+      verification:
+        v.verification === "identity-only" ? "identity-only" : undefined,
+      scanEventId: optionalStr(v.scanEventId, 200),
     };
   });
+  const scanIds = collection.flatMap((entry) =>
+    entry.scanEventId ? [entry.scanEventId] : [],
+  );
+  if (new Set(scanIds).size !== scanIds.length)
+    throw new Error("Backup contains duplicate scan event IDs.");
   const review: ReviewItem[] = raw.review.map((v) => {
     if (!record(v) || !["search", "scan"].includes(String(v.origin)))
       throw new Error("Backup contains an invalid review entry.");

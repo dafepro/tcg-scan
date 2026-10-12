@@ -1,28 +1,29 @@
 # Architecture
 
-## Data flow
+## Continuous visual path
 
-1. `Scanner` requests a camera only after a user action or accepts a local image file.
-2. `recognition.ts` prepares an image and runs a local Tesseract worker. Only text candidates are handed to the app.
-3. `catalog.ts` calls the chosen public API and normalizes its response into the `Card` contract. Search results and full detail are cached with bounds and expiry.
-4. Selecting a result fetches full detail and adds it to a review queue. Explicit confirmation creates or increments a collection entry keyed by provider identity, condition and finish.
-5. `storage.ts` validates versioned app data before persistence/import. A changed storage snapshot or storage event from another tab pauses writes to avoid stale overwrite.
-6. JSON exports preserve collections, pending review and named decks. CSV is an intentionally separate spreadsheet-only output with formula-injection guards.
+1. `ContinuousScanner` starts the requested camera after a user action. It initializes a persistent `VisionClient` worker and loads the selected game's installed reference shards from IndexedDB. No recognition request uploads a frame.
+2. `vision/engine.ts` finds quadrilateral card regions, rectifies perspective, measures quality, extracts local hashes and ORB features, shortlists indexed references, and verifies feature geometry with RANSAC. Unknown references and insufficient/ambiguous geometry never become eligible solely because they are the nearest candidate.
+3. `scan-session.ts` uses global one-to-one spatial/identity track assignment, rejects out-of-order frame replies, requires three eligible observations spanning 250 ms, and creates one event ID per physical presentation. Counted identical identities are conservatively reused within an epoch, preserving the maximum simultaneously seen copies rather than recounting camera pans. A short dropout preserves counting; stream mode rearms after 1.2 seconds with no detected card regions. That is observed detector output, not proof that the camera view is physically empty: prolonged blur/glare can rearm it. Binder mode requires explicit new-page reset and is safer for a layout that should never recount automatically.
+4. `scan-inventory.ts` creates an idempotent event row with unknown condition/finish and identity-only verification. App integration validates and synchronously writes storage before acknowledging a durable success. Undo targets the exact scan event. The selected image reference is not proof of exact physical printing, finish or authenticity.
+5. `pricing.ts` retrieves provider quotes independently after an accepted match. A cached result may display immediately while refreshing. Variant, currency, catalog-vs-printing scope and source timestamps remain explicit. Identity-only entries are excluded from valuation totals.
 
-## Modules
+The browser worker accepts one in-flight frame. The UI drops work instead of queuing stale frames. Pause, hidden tabs, stop, navigation, game changes and unmount prevent late saves. Video and overlays share the same full-frame geometry without CSS cover-cropping or mirroring.
 
-- `src/types.ts`: shared domain contracts.
-- `src/lib/catalog.ts`: provider adapters, errors, cache, throttling, safe URL checks.
-- `src/lib/recognition.ts`: OCR lifecycle, preprocessing, candidate extraction, file validation.
-- `src/lib/collection.ts`: quantity merging, pricing summaries, deck matching and exports.
-- `src/lib/storage.ts`: schema validation, import merge and local persistence.
-- `src/components/Scanner.tsx`: media lifecycle, preview, capture, cancellation and recording.
-- `src/App.tsx`: workflow, views, dialogs and state integration.
+## Reference data
 
-## Tradeoffs
+`reference-packs.ts` validates data-only feature packs, bounds per-shard size/counts, stores checksummed packs in IndexedDB and verifies same-origin prebuilt downloads. Installed and loaded coverage are distinct. No full catalog is bundled, and a fresh source install has zero local visual references.
 
-Local storage keeps setup simple and collections private, but it is not cross-device synchronization and has browser-specific quotas. Large scale collections would benefit from IndexedDB and migrations. Search-based OCR is intentionally reviewable rather than claiming artwork recognition. Data adapters are isolated so other catalogs can be added without rewriting collection storage.
+`scripts/build-index.mjs` builds resumable descriptor shards from provider catalog metadata and locally cached source images using the same preprocessing as the browser. Raw artwork is never committed. Generated-feature redistribution rights are separate from the application's MIT source license. See [reference packs](reference-packs.md) and [recognition design](continuous-recognition-architecture.md).
 
-Catalog data is untrusted. Runtime validation accepts only known provider HTTPS image/link hosts. Imported backups are validated from unknown JSON and reconstructed field by field. No imported object is assigned into application prototypes or executed as HTML. CSV text is quoted and dangerous spreadsheet prefixes are neutralized.
+## Assisted path and collection
 
-The reference workflow was inspected as public product behavior. All application markup, styling, domain logic, recognition heuristics and assets in this repository were authored independently.
+`Scanner` / `recognition.ts` remain the local English OCR fallback. Text candidates go to `catalog.ts`, then explicit Review confirmation. Catalog requests have pacing, timeouts, expiry and strict URL validation.
+
+`storage.ts` reconstructs imported app data field-by-field, validates aggregate limits, and persists version-1 JSON in localStorage. Existing backups remain compatible. A changed storage snapshot or another-tab event pauses writes to protect against stale overwrite; this is not a multi-user database or a cross-tab transaction protocol. JSON exports preserve collection/review/decks; CSV protects against spreadsheet formula injection.
+
+## Limits
+
+Spatial tracking cannot prove that an identical physical card is a different copy after leaving view. Binder pans/crossing cards can confuse assignment; use one stable layout and verify counts. Classical visual evidence and synthetic replay tests are not calibrated recognition probabilities or held-out physical-card accuracy. The UI reports measured processing time and exact loaded reference count. Browser storage quotas, cache eviction and origin changes can lose local data, so export collections regularly.
+
+All application code and visual design are independently authored. Card data, artwork and trademarks retain their own rights and attribution requirements.

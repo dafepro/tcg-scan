@@ -62,6 +62,16 @@ describe("collection", () => {
     expect(collectionCsv(a)).toContain("'=HYPERLINK");
     expect(collectionCsv(a)).toContain('""bad""');
   });
+  it("exports an automatic visual reference without claiming its set, number or value", () => {
+    const entries = addToCollection([], card, 1, "Unknown", "Unknown");
+    entries[0].verification = "identity-only";
+    const csv = collectionCsv(entries);
+    const row = csv.split("\r\n")[1].split(",");
+    expect(row.slice(2, 5)).toEqual(['""', '""', '""']);
+    expect(row.slice(8, 12)).toEqual(['""', '""', '""', '""']);
+    expect(row.slice(13)).toEqual(['"Unconfirmed"', '"Test set"', '"1"']);
+    expect(referenceTotals(entries).unpriced).toBe(1);
+  });
 });
 describe("deck checker", () => {
   it("normalizes names and sums duplicates", () => {

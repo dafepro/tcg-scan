@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+public/ocr/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+coverage/
+.auth/
+*.pem
+*.key
+
+*.tsbuildinfo
+public/licenses/

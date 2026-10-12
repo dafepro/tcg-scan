@@ -2,6 +2,15 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import {
+  attachNativeFrameDiagnosticsOnFailure,
+  installNativeFrameDiagnostics,
+} from "./fixtures/native-frame-diagnostics";
+
+test.beforeEach(async ({ page }) => installNativeFrameDiagnostics(page));
+test.afterEach(async ({ page, browser }, testInfo) => {
+  await attachNativeFrameDiagnosticsOnFailure(page, browser, testInfo);
+});
 
 const fixturePack = fileURLToPath(
   new URL("./fixtures/continuous-feature-pack.json", import.meta.url),

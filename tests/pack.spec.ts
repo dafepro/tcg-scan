@@ -1,6 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { originalInstallerArchive } from "./fixtures/installer-archive";
+import {
+  attachNativeFrameDiagnosticsOnFailure,
+  installNativeFrameDiagnostics,
+} from "./fixtures/native-frame-diagnostics";
+
+test.beforeEach(async ({ page }) => installNativeFrameDiagnostics(page));
+test.afterEach(async ({ page, browser }, testInfo) => {
+  await attachNativeFrameDiagnosticsOnFailure(page, browser, testInfo);
+});
 
 /** Control-flow tests only. The original five-second geometric clip is decoded by
  * the browser and captured by production VideoFrame/rVFC code. Only model results

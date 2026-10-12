@@ -33,7 +33,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. There are **no API keys, environment secrets, backend, database, signup, or paid services** to configure.
+Open the local URL printed by Vite. There are **no API keys, environment secrets, signup, or paid services** to configure. The included local app server also provides the fixed reference-database installer; it does not receive camera frames or collection data.
 
 `npm ci` copies the installed OCR worker, WebAssembly files, a SHA-256-verified English language model, and license notices into `public/ocr/`. The model is pinned through `@tesseract.js-data/eng@1.0.0` and served by the app itself (10.9 MB compressed). OCR needs no external model CDN, and photos are never uploaded.
 
@@ -46,7 +46,7 @@ npm run build
 npm run preview
 ```
 
-Serve the generated `dist/` directory with any static host. Include the `ocr/`, `vision-models/` and `licenses/` directories and their license notices. Use **HTTPS** on real devices; browsers permit camera access on localhost for development. A plain HTTP LAN address usually cannot use the camera. Internet access is required for uncached catalog searches. OCR runtime and model assets load from your own host. This release does not include a service worker or promise offline startup.
+The provided development and preview servers support the one-click Pokémon database installer. A static-only host can serve the app but needs the matching installer backend for that button; otherwise use the single-ZIP import fallback. Include the `ocr/`, `vision-models/` and `licenses/` directories and their license notices. Use **HTTPS** on real devices; browsers permit camera access on localhost for development. A plain HTTP LAN address usually cannot use the camera. Internet access is required for uncached catalog searches. OCR runtime and model assets load from your own host. This release does not include a service worker or promise offline startup.
 
 Continuous capture prefers a current browser with `VideoFrame.copyTo` RGBA and `requestVideoFrameCallback` support. It requests bounded camera resolution and checks the actual dimensions. Older implementations use a visibly labeled, reduced-resolution one-frame-per-second fallback with a hard source-plus-readback budget, then stop; photo/text capture remains available. Six-minute strict and Quick cloud-camera replays passed with correct durable counts and no crash or OOM increase. Phone hardware and whole-index behavior remain separate validation gates.
 
@@ -54,7 +54,7 @@ For hosting under a subdirectory, run `npm run build -- --base=/tcg-scan/`. Vite
 
 ## Everyday use
 
-1. Select the game and use **Install learned reference pack** in the setup panel. Select the manifest and every binary shard together. Camera and multi-card photo controls stay disabled until that game has ready references. **Manage offline packs** lets you inspect or remove installed coverage. The repository includes a resumable builder; no third-party artwork or full catalog descriptors are bundled.
+1. Select Pokémon and click **Install Pokémon database**. The included app server downloads the pinned public reference archive (about 358 MB), checks its SHA-256, and installs 19,665 references in this browser. Progress and Cancel are shown; an interrupted download can continue from the local cache. No ZIP extraction or shard selection is required. Allow additional disk space for the server cache and browser database. On a static-only host, use **Use a downloaded reference ZIP** and select the one complete ZIP. Individual manifest/shard import remains under Advanced. Other games require a compatible reference ZIP; their catalog search and collection features work without a visual pack. Camera and multi-card photo controls stay disabled until the selected game has ready references. **Manage offline packs** lets you inspect or remove coverage. No raw third-party artwork is bundled.
 2. Choose **One card after another** or **Binder / tabletop**, then **Start continuous camera**. Frames and matching stay on the device. Per-card overlays show local matching, stability, saved, ambiguous or quality states.
 3. Choose **Quick** for one strong identity match plus a fresh current-card continuity check, or **Strict** for three identity matches plus that check. Keep the entire card comfortably inside the preview, including a little space beyond all four corners. Different identities save automatically. An identical identity stays counted across gaps, blur and re-entry; after replacing it with another physical copy, tap **Next copy** to rearm only that visible identity. Other saved identities remain counted. Automatic identical-copy exit/re-entry is not verified. Undo accidental counts.
 4. In binder mode, keep one page/layout stable; use **New page** when changing it. Separate simultaneous copies have independent tracks. Panning across a large layout or crossing cards can still confuse spatial association, so inspect counts.
@@ -103,7 +103,7 @@ RUN_LIVE_VISION=1 npm run test:e2e -- tests/continuous.spec.ts --project=desktop
 
 The unit suite exercises provider schemas, throttling, cancellation, timeouts, real-vs-missing price semantics, OCR-name extraction, collection merging, deck quantities, CSV safety and backup validation. Browser tests use clearly identified synthetic fixtures rather than claiming live provider data; live-provider integration requires internet availability. The opt-in browser OCR smoke uses a generated image and real local worker plus the packaged English model; Mac CI enables it along with the genuine OpenCV replay. Physical camera hardware and optical recognition across real cards still need device testing. CI runs the aggregate checks and browser suite and retains the test report/screenshots. It targets the owner’s self-hosted macOS ARM64 runner and runs only for `dafepro` pushes/manual dispatches on this repository’s `main` branch. Public pull requests never execute on that personal runner; contributors can run the same checks locally. A missing/offline runner leaves jobs queued.
 
-Stack: React, TypeScript, Vite, OpenCV.js, ONNX Runtime Web, Tesseract.js, Lucide, Vitest and Playwright. Browser-only architecture; no backend needed. See [provider behavior and terms](docs/providers.md), [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md).
+Stack: React, TypeScript, Vite, OpenCV.js, ONNX Runtime Web, Tesseract.js, Lucide, Vitest and Playwright. Recognition and collections remain browser-local. The included local server handles the fixed one-click reference download; static hosts can use ZIP import. See [provider behavior and terms](docs/providers.md), [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md).
 
 ## License and attribution
 

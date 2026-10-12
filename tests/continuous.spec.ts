@@ -169,9 +169,7 @@ async function deterministicCamera(
   await scanner(page)
     .getByLabel("Import feature packs")
     .setInputFiles(fixturePack);
-  await expect(scanner(page)).toContainText(
-    "9 installed references",
-  );
+  await expect(scanner(page)).toContainText("9 installed references");
 }
 const metrics = (page: Page) =>
   page.evaluate(() => {
@@ -226,11 +224,15 @@ test("empty selected-game coverage promotes setup without opening camera or work
   await expect(
     scan.getByText("Set up Pokémon recognition", { exact: true }),
   ).toBeVisible();
-  await expect(scan.getByLabel("Install learned reference pack")).toBeVisible();
+  await expect(
+    scan.getByRole("button", { name: "Install Pokémon database", exact: true }),
+  ).toBeVisible();
   await expect(
     scan.getByRole("button", { name: "Start continuous camera" }),
   ).toBeDisabled();
-  await expect(scan.getByLabel("Multi-card photo", { exact: true })).toBeDisabled();
+  await expect(
+    scan.getByLabel("Multi-card photo", { exact: true }),
+  ).toBeDisabled();
   // Coverage is per selected game, even when another game's fixture is ready.
   await scan.getByLabel("Import feature packs").setInputFiles(fixturePack);
   await expect(scan).toContainText("9 installed references");
@@ -244,13 +246,17 @@ test("empty selected-game coverage promotes setup without opening camera or work
   await expect(
     scan.getByRole("button", { name: "Start continuous camera" }),
   ).toBeDisabled();
-  await expect(scan.getByLabel("Multi-card photo", { exact: true })).toBeDisabled();
+  await expect(
+    scan.getByLabel("Multi-card photo", { exact: true }),
+  ).toBeDisabled();
   expect(
     await page.evaluate(
       () =>
-        (window as unknown as {
-          emptyCoverageCalls: { camera: number; worker: number };
-        }).emptyCoverageCalls,
+        (
+          window as unknown as {
+            emptyCoverageCalls: { camera: number; worker: number };
+          }
+        ).emptyCoverageCalls,
     ),
   ).toEqual({ camera: 0, worker: 0 });
 });
@@ -425,9 +431,7 @@ test("real local worker auto-adds two synthetic video regions once @live-vision"
   await scanner(page)
     .getByLabel("Import feature packs")
     .setInputFiles(fixturePack);
-  await expect(scanner(page)).toContainText(
-    "9 installed references",
-  );
+  await expect(scanner(page)).toContainText("9 installed references");
   await scanner(page)
     .getByRole("button", { name: "Start continuous camera" })
     .click();

@@ -10,11 +10,11 @@ This is a separate storage path from legacy `orb-phash-v1` packs. Old ORB import
 - Names can occur in multiple printings. Recognition does **not** confirm exact printing, language variants with identical artwork, finish, or condition.
 - A versioned pack identifies one game and has at most 60,000 references. Each shard contains at most 128 records, or **2,490,400 bytes** including its header. The metadata-only UTF-8 manifest is capped at 64 MiB before reading.
 - Ready and importing packs reserve capacity per game, up to 60,000 references in total for that game. Separate games have independent reservations. An over-capacity import is rejected before its binary records are staged.
-- Local storage is origin-specific. Browser eviction, clearing site data, private-browsing policies, quota limits, and changing the app origin can remove or hide an installed pack. Keep the private source files for reimport.
+- Local storage is origin-specific. Browser eviction, clearing site data, private-browsing policies, quota limits, and changing the app origin can remove or hide an installed pack. The included Pokémon database can be reinstalled with its button; keep source ZIPs for custom packs.
 - Frozen conversion never rebuilds a catalog. A separate explicit-input offline extraction mode is implemented, with reproducible small-fixture tests and resumable content-verified caching. A full English paper-Pokémon extraction has completed with 19,665 references; expanded-gallery browser checks are recorded separately in [learned validation](learned-validation.md). No phone-performance result is claimed here. Full-catalog input requires an additional explicit flag after performance review. Neither mode publishes anything.
-- A checksum establishes byte integrity, not copyright permission, authenticity, or correctness of the supplied metadata. Packs are local user-provided data, not signed provider distributions. Commercial card descriptors remain private pending a separate rights review. Do not commit or deploy pack outputs.
+- A checksum establishes byte integrity, not copyright permission, authenticity, or correctness of the supplied metadata. Packs are local user-provided data, not signed provider distributions. The prepared Pokémon snapshot is distributed separately with its own provider/provenance notices after explicit repository-owner approval. This is not a blanket license to redistribute artwork or arbitrary derived packs. Do not commit raw artwork, private evaluation photographs or build caches.
 
-## Completed private English Pokémon extraction
+## Completed English Pokémon extraction
 
 On 2026-10-12, the explicit-input builder completed the available-image English paper-card snapshot: **19,665 references, 4,416 name identities, 154 binary shards**, and **391,001,940 bytes** including the 8,394,772-byte manifest. The manifest SHA-256 is `82efef2f91f2d2338c4634a0284912679f994c835b3eef5d3632bcb9c10f5d19`. Every output shard was independently size/hash-checked after atomic publication of the output directory.
 
@@ -22,7 +22,11 @@ The input contains 21,256 paper-card records. It separately accounts for 1,590 r
 
 A resumed, sequential Node/WASM run reused 7,171 content-verified feature records and extracted the remaining 12,494 in about 596 seconds; the builder sampled a 563,019,776-byte process-RSS peak. These are offline build figures, not browser startup, camera latency or a from-scratch whole-build duration. Images and feature caches were kept in private disk-backed storage. The builder made no network requests and emitted no source images.
 
-This pack remains a separate private reference artifact with provider/provenance notices, not a repository asset or a blanket artwork redistribution grant. Expanded-gallery browser recognition and controls are reported in [learned validation](learned-validation.md); they are separate from successful extraction and remain limited cloud-browser evidence, not a whole-game accuracy guarantee.
+This pack is a separate [public reference release](https://github.com/dafepro/tcg-scan/releases/tag/reference-data-pokemon-en-2026-10-12) with provider/provenance notices. Its 358,031,963-byte ZIP has SHA-256 `a57c832645744a7766473c2bda188f83e9cd4fa5f4e0aaf7c894242133fd585f`. This distribution is not a blanket artwork redistribution grant. Expanded-gallery browser recognition and controls are reported in [learned validation](learned-validation.md); they are separate from successful extraction and remain limited cloud-browser evidence, not a whole-game accuracy guarantee.
+
+## Install the prepared database
+
+In the included local app server, choose **Install Pokémon database**. The app downloads the fixed release, verifies it and installs the references; progress and Cancel are available. An interrupted download can resume, and a cancelled partial browser import is retried safely. Static hosts without the installer backend can use **Use a downloaded reference ZIP** and select the complete ZIP directly, without extracting it. Individual manifest/shard selection remains an advanced option. See [self-hosting](self-hosting.md) for the server/cache and static-host boundaries.
 
 ## API
 
@@ -36,7 +40,7 @@ loadLearnedReference(featureId): Promise<LearnedReferenceFeatures>
 removeLearnedPack(id): Promise<void>
 ```
 
-Select one `*.learned.json` file and **all** binary files declared by it. The converter emits `manifest.learned.json` and `features-00001.bin`, `features-00002.bin`, etc. Missing, duplicate, extra, incorrectly sized, or differently named files are rejected. Import never resolves a manifest path over the network.
+For advanced direct-file import, select one `*.learned.json` file and **all** binary files declared by it. The converter emits `manifest.learned.json` and `features-00001.bin`, `features-00002.bin`, etc. Missing, duplicate, extra, incorrectly sized, or differently named files are rejected. Import never resolves a manifest path over the network.
 
 `onProgress` receives `{phase, completed, total, text}`, where phase is `validating`, `importing`, or `complete`. The import checks cancellation before each shard/record and before activation. A SHA operation or IndexedDB transaction already in progress is allowed to finish before cancellation is handled.
 
@@ -195,7 +199,7 @@ The private cache is keyed by original image content plus a versioned extraction
 
 Processing is sequential and retains one original image, one canonical image/query, and one small output shard, plus the metadata manifest and constant-size model runtime. It does not accumulate full-catalog descriptors. A staging directory is renamed to the requested output only after successful pack validation. Completed feature cache entries survive cancellation or an output failure. Never treat a staging directory as an installed pack.
 
-The sibling `<output>.report.json` separates provider-missing images (`missingProviderImages`), predeclared advertised-but-unavailable images (`unavailableAdvertisedImages`), attempted source/decode/extraction/quantization failures (`failures`), repaired cache entries, cache hits, and newly extracted references. Predeclared unavailable sources are never opened or sent to the extractor. Pack coverage preserves that distinction as optional `unavailableImages`; full-catalog accounting is extracted + failed + unavailable + explicitly deduplicated images = advertised available images. Older manifests omit the optional field and retain their exact serialization. The pack coverage counts successful and failed references honestly. Fatal model/runtime or output/cache-write errors stop the build. The sibling `<output>.NOTICE.txt` includes source/rights information and the model notice; neither file belongs in the manifest+binary import selection. Features remain private, and these notices grant no new card-artwork or redistribution rights.
+The sibling `<output>.report.json` separates provider-missing images (`missingProviderImages`), predeclared advertised-but-unavailable images (`unavailableAdvertisedImages`), attempted source/decode/extraction/quantization failures (`failures`), repaired cache entries, cache hits, and newly extracted references. Predeclared unavailable sources are never opened or sent to the extractor. Pack coverage preserves that distinction as optional `unavailableImages`; full-catalog accounting is extracted + failed + unavailable + explicitly deduplicated images = advertised available images. Older manifests omit the optional field and retain their exact serialization. The pack coverage counts successful and failed references honestly. Fatal model/runtime or output/cache-write errors stop the build. The sibling `<output>.NOTICE.txt` includes source/rights information and the model notice; neither file belongs in the manifest+binary import selection. New build outputs remain local until explicitly distributed, and these notices grant no new card-artwork or redistribution rights.
 
 ### Small-fixture verification
 

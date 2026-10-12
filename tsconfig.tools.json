@@ -3,5 +3,10 @@
   "compilerOptions": {
     "types": ["node", "vite/client"]
   },
-  "include": ["scripts/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
+  "include": [
+    "scripts/**/*.ts",
+    "server/**/*.ts",
+    "tests/**/*.ts",
+    "playwright.config.ts"
+  ]
 }

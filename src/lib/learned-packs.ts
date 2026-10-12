@@ -118,7 +118,12 @@ export interface LearnedImportProgress {
   total: number;
   text: string;
 }
-export type LearnedPackFile = Blob & { readonly name: string };
+/** File and lazy archive entries share only this bounded read contract. */
+export interface LearnedPackFile {
+  readonly name: string;
+  readonly size: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
 export class LearnedStorageError extends Error {
   constructor(
     public code:
@@ -710,6 +715,7 @@ async function deletePack(
   db: IDBDatabase,
   id: string,
   token?: string,
+  onlyIfCorrupt = false,
 ): Promise<void> {
   await write(db, ["packs", "index", "records"], (tx) => {
     const packs = tx.objectStore("packs"),
@@ -717,7 +723,8 @@ async function deletePack(
     request.onsuccess = () => {
       if (
         !request.result ||
-        (token !== undefined && request.result.token !== token)
+        (token !== undefined && request.result.token !== token) ||
+        (onlyIfCorrupt && request.result.readiness !== "corrupt")
       )
         return;
       packs.delete(id);
@@ -758,6 +765,8 @@ export async function importLearnedPack(
   options: {
     signal?: AbortSignal;
     onProgress?: (progress: LearnedImportProgress) => void;
+    /** Optional release identity, checked before any database access or writes. */
+    expectedManifestSha256?: string;
   } = {},
 ): Promise<LearnedPackMetadata> {
   checkSignal(options.signal);
@@ -787,6 +796,14 @@ export async function importLearnedPack(
   const manifest = validateLearnedManifest(value),
     manifestChecksum = await digest(manifestBytes),
     id = `learned:${manifestChecksum}`;
+  if (options.expectedManifestSha256 !== undefined) {
+    const expected = checksum(options.expectedManifestSha256);
+    if (manifestChecksum !== expected)
+      throw new LearnedStorageError(
+        "corrupt",
+        "The learned manifest does not match the expected reference release. No existing packs were changed.",
+      );
+  }
   const supplied = new Map<string, LearnedPackFile>();
   for (const input of files) {
     if (supplied.has(input.name)) fail("Duplicate import filename.");
@@ -1229,6 +1246,19 @@ export async function removeLearnedPack(id: string): Promise<void> {
   const db = await openDatabase();
   try {
     await deletePack(db, id);
+  } finally {
+    db.close();
+  }
+}
+/** Explicit installer retry may clear only its unusable target. The readiness
+ * check and deletion share a transaction, preserving concurrent ready/importing
+ * replacements rather than trusting an earlier listLearnedPacks snapshot.
+ */
+export async function removeCorruptLearnedPack(id: string): Promise<void> {
+  if (!/^learned:[a-f0-9]{64}$/.test(id)) fail("Invalid learned pack ID.");
+  const db = await openDatabase();
+  try {
+    await deletePack(db, id, undefined, true);
   } finally {
     db.close();
   }

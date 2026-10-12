@@ -17,3 +17,5 @@ coverage/
 public/licenses/
 public/vision-models/
 private-packs/
+
+.cache/tcg-scan/

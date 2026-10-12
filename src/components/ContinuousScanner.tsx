@@ -42,6 +42,12 @@ import type {
   LearnedImportProgress,
   LearnedPackMetadata,
 } from "../lib/learned-packs";
+import { importLearnedArchive } from "../lib/learned-archive";
+import { installPokemonDatabase } from "../lib/database-install";
+import {
+  POKEMON_REFERENCE_RELEASE,
+  type PokemonReferenceDownloadStatus,
+} from "../lib/pokemon-reference-release";
 import { referenceCard } from "../lib/scan-inventory";
 import { ReferenceQuotes } from "./ReferenceQuotes";
 import {
@@ -153,6 +159,8 @@ export default function ContinuousScanner({
   const activeMatcher = useRef<"orb" | "learned">("orb");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<LearnedImportProgress>();
+  const [downloadProgress, setDownloadProgress] =
+    useState<PokemonReferenceDownloadStatus>();
   const [importFeedback, setImportFeedback] = useState("");
   const importController = useRef<AbortController | null>(null);
   const [available, setAvailable] = useState<PrebuiltPackEntry[]>([]);
@@ -891,27 +899,33 @@ export default function ContinuousScanner({
       setBusy(false);
     }
   }
-  async function importLearnedFiles(files: FileList | null) {
-    if (!files?.length) return;
+  async function importLearnedFiles(files: FileList | null, archive = false) {
+    if (!files?.length || active || importController.current) return;
     const gen = ++generation.current;
     const controller = new AbortController();
-    importController.current?.abort();
     importController.current = controller;
     setBusy(true);
     setImporting(true);
     setImportProgress(undefined);
-    setImportFeedback("Checking the selected manifest and binary shards…");
+    setDownloadProgress(undefined);
+    setImportFeedback(
+      archive
+        ? "Checking the reference ZIP. No extraction is needed…"
+        : "Checking the selected manifest and binary shards…",
+    );
     setError("");
     try {
-      await importLearnedPack(Array.from(files), {
+      const options = {
         signal: controller.signal,
-        onProgress: (progress) => {
+        onProgress: (progress: LearnedImportProgress) => {
           if (gen === generation.current) {
             setImportProgress(progress);
             setImportFeedback(progress.text);
           }
         },
-      });
+      };
+      if (archive) await importLearnedArchive(files[0], options);
+      else await importLearnedPack(Array.from(files), options);
       if (gen !== generation.current) return;
       await refreshPacks();
       setImportFeedback(
@@ -922,7 +936,7 @@ export default function ContinuousScanner({
       if (gen === generation.current) {
         if (controller.signal.aborted)
           setImportFeedback(
-            "Installation cancelled. Remove any incomplete pack below, then select the manifest and all binary shards to retry.",
+            "Installation cancelled. Remove any incomplete pack below, then choose the reference ZIP again to retry.",
           );
         else {
           setError(errorMessage(e));
@@ -930,6 +944,57 @@ export default function ContinuousScanner({
         }
         await refreshPacks();
       }
+    } finally {
+      if (gen === generation.current) {
+        importController.current = null;
+        setImporting(false);
+        setBusy(false);
+      }
+    }
+  }
+  async function installDatabase() {
+    if (active || importController.current || game !== "pokemon") return;
+    const gen = ++generation.current;
+    const controller = new AbortController();
+    importController.current = controller;
+    setBusy(true);
+    setImporting(true);
+    setImportProgress(undefined);
+    setDownloadProgress(undefined);
+    setImportFeedback("Starting the Pokémon database installation…");
+    setError("");
+    try {
+      await installPokemonDatabase({
+        signal: controller.signal,
+        onDownloadProgress: (progress) => {
+          if (gen !== generation.current) return;
+          setDownloadProgress(progress);
+          setImportFeedback(
+            progress.state === "verifying"
+              ? "Checking the downloaded database integrity…"
+              : progress.state === "ready"
+                ? "Download checked. Installing references in this browser…"
+                : `Downloading Pokémon references: ${(progress.downloadedBytes / 1_000_000).toFixed(1)} / ${(progress.totalBytes / 1_000_000).toFixed(1)} MB`,
+          );
+        },
+        onProgress: (progress) => {
+          if (gen !== generation.current) return;
+          setImportProgress(progress);
+          setImportFeedback(progress.text);
+        },
+      });
+      if (gen !== generation.current) return;
+      await refreshPacks();
+      setImportFeedback("Pokémon database ready. You can start scanning now.");
+      setMessage("References ready. Hold cards still until Added.");
+    } catch (e) {
+      if (gen !== generation.current) return;
+      const feedback = controller.signal.aborted
+        ? "Installation cancelled. The app server keeps the download progress. Choose Install Pokémon database to continue."
+        : errorMessage(e);
+      setImportFeedback(feedback);
+      if (!controller.signal.aborted) setError(feedback);
+      await refreshPacks();
     } finally {
       if (gen === generation.current) {
         importController.current = null;
@@ -1133,6 +1198,9 @@ export default function ContinuousScanner({
   }[game];
   const needsSetup = packsReady && installedCount === 0;
   const packPanelOpen = needsSetup || packOpen;
+  const officialDatabaseReady = readyLearned.some(
+    (pack) => pack.checksum === POKEMON_REFERENCE_RELEASE.manifestSha256,
+  );
   const visibleSettled = tracks.filter(
     (track) =>
       track.visible &&
@@ -1240,30 +1308,90 @@ export default function ContinuousScanner({
         )}
         {packPanelOpen && (
           <div className="pack-manager" id="scanner-pack-manager">
-            <label className="button primary" aria-disabled={active || busy}>
-              <Upload size={16} />
-              Install learned reference pack
-              <input
-                className="sr-only"
-                type="file"
-                accept="application/json,application/octet-stream,.json,.bin"
-                multiple
-                disabled={active || busy}
-                onChange={(e) => {
-                  void importLearnedFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            <p className="pack-help">
-              Select the learned manifest (.json) and all its binary shards
-              (.bin) together. A ready learned pack takes priority for this
-              game.
-            </p>
+            {game === "pokemon" && (
+              <div className="database-install">
+                <button
+                  className="button primary"
+                  disabled={
+                    active ||
+                    busy ||
+                    officialDatabaseReady ||
+                    !POKEMON_REFERENCE_RELEASE.url
+                  }
+                  onClick={() => void installDatabase()}
+                >
+                  <Download size={16} />
+                  {officialDatabaseReady
+                    ? "Pokémon database installed"
+                    : "Install Pokémon database"}
+                </button>
+                <p className="pack-help">
+                  One-time{" "}
+                  {(POKEMON_REFERENCE_RELEASE.sizeBytes / 1_000_000).toFixed(0)}{" "}
+                  MB download ·{" "}
+                  {POKEMON_REFERENCE_RELEASE.referenceCount.toLocaleString()}{" "}
+                  English paper-card references. The app handles every file for
+                  you.
+                </p>
+              </div>
+            )}
+            <details className="pack-compatibility">
+              <summary>Use a downloaded reference ZIP</summary>
+              <label className="button subtle" aria-disabled={active || busy}>
+                <Upload size={16} />
+                Install database from ZIP
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="application/zip,.zip"
+                  disabled={active || busy}
+                  onChange={(e) => {
+                    void importLearnedFiles(e.target.files, true);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <p className="pack-help">
+                Choose one complete reference ZIP. The app checks and installs
+                everything locally; you don’t need to extract or manage its
+                files.
+              </p>
+              {POKEMON_REFERENCE_RELEASE.url && game === "pokemon" && (
+                <a
+                  href={POKEMON_REFERENCE_RELEASE.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Download the complete Pokémon reference ZIP
+                </a>
+              )}
+            </details>
+            <details className="pack-compatibility">
+              <summary>Advanced: individual reference files</summary>
+              <label className="button subtle" aria-disabled={active || busy}>
+                <Upload size={16} />
+                Install learned reference pack
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="application/json,application/octet-stream,.json,.bin"
+                  multiple
+                  disabled={active || busy}
+                  onChange={(e) => {
+                    void importLearnedFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <p>
+                Select one learned manifest and all its binary shards together.
+              </p>
+            </details>
             <p className="pack-storage-help">
-              Packs stay in this browser after reload. Keep your source files:
-              private browsing or clearing site data can remove them. Back up
-              your collection separately.
+              References stay in this browser after reload. Private browsing or
+              clearing site data can remove them. Reinstall the Pokémon database
+              here if needed; keep any custom reference ZIPs. Back up your
+              collection separately.
             </p>
             {(importing || importFeedback) && (
               <div
@@ -1273,6 +1401,13 @@ export default function ContinuousScanner({
                 aria-atomic="true"
               >
                 <span>{importFeedback}</span>
+                {importing && downloadProgress && !importProgress && (
+                  <progress
+                    aria-label="Pokémon database download"
+                    max={downloadProgress.totalBytes}
+                    value={downloadProgress.downloadedBytes}
+                  />
+                )}
                 {importing && importProgress && importProgress.total > 0 && (
                   <>
                     <progress

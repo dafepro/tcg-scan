@@ -2,7 +2,7 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -10,10 +10,18 @@ concurrency:
   cancel-in-progress: true
 jobs:
   checks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A personal runner must never execute code from public pull requests.
+    if: >-
+      github.repository == 'dafepro/tcg-scan' &&
+      github.actor == 'dafepro' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, macOS, ARM64, dcarrell-mac]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -21,8 +29,10 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run test:e2e
+        env:
+          RUN_LIVE_OCR: "1"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

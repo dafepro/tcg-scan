@@ -883,15 +883,23 @@ function Modal({
   const titleId = useId();
   useEffect(() => {
     const dialog = ref.current;
+    const previousFocus = document.activeElement;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      dialog?.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
+        previousFocus.focus();
+    };
   }, []);
   return (
     <dialog
       ref={ref}
       className="modal"
       aria-labelledby={titleId}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

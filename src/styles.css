@@ -2052,3 +2052,47 @@ h3,
     grid-template-columns: minmax(0, 1fr) 97px;
   }
 }
+/* Catalog set names and small-screen navigation remain readable at 320px. */
+p,
+.collection-card-info,
+.review-card-content .muted {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 520px) {
+  .nav-link {
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    padding: 8px 4px;
+    font-size: 10px;
+  }
+  .nav-link .count {
+    position: absolute;
+    top: 3px;
+    right: 7px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 8px;
+  }
+  .main-nav {
+    gap: 0;
+  }
+  .lookup-empty p br {
+    display: initial;
+  }
+}
+.toast {
+  width: max-content;
+}
+.art-placeholder > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: 4.1em;
+}
+.art-placeholder > svg,
+.art-placeholder > small {
+  flex-shrink: 0;
+}

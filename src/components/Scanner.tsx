@@ -589,7 +589,7 @@ export default function Scanner({
               <div className="scanner-idle-copy">
                 <h3>
                   A little scan.
-                  <br />A great discovery.
+                  <br /> A great discovery.
                 </h3>
                 <p>Turn your cards into a collection.</p>
               </div>

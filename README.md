@@ -81,9 +81,11 @@ npm run check
 # Browser tests (install once):
 npx playwright install --with-deps chromium
 npm run test:e2e
+# Optional real browser OCR integration on a generated test image:
+RUN_LIVE_OCR=1 npm run test:e2e -- tests/scanner.spec.ts --project=desktop-chromium
 ```
 
-The unit suite exercises provider schemas, throttling, cancellation, timeouts, real-vs-missing price semantics, OCR-name extraction, collection merging, deck quantities, CSV safety and backup validation. Browser tests use clearly identified synthetic fixtures rather than claiming live provider data; live-provider integration requires internet availability. CI runs the aggregate checks and browser suite and retains the test report/screenshots.
+The unit suite exercises provider schemas, throttling, cancellation, timeouts, real-vs-missing price semantics, OCR-name extraction, collection merging, deck quantities, CSV safety and backup validation. Browser tests use clearly identified synthetic fixtures rather than claiming live provider data; live-provider integration requires internet availability. The opt-in browser OCR smoke uses a generated image and real local worker plus English model download; Mac CI enables it. Physical camera hardware and optical recognition across real cards still need device testing. CI runs the aggregate checks and browser suite and retains the test report/screenshots. It targets the owner’s self-hosted macOS ARM64 runner and runs only for `dafepro` pushes/manual dispatches on this repository’s `main` branch. Public pull requests never execute on that personal runner; contributors can run the same checks locally. A missing/offline runner leaves jobs queued.
 
 Stack: React, TypeScript, Vite, Tesseract.js, Lucide, Vitest and Playwright. Browser-only architecture; no backend needed. See [provider behavior and terms](docs/providers.md), [architecture](docs/architecture.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md).
 

@@ -219,7 +219,7 @@ test("empty search and network failure preserve a useful recovery path", async (
     "Enter at least 2 characters",
   );
   await searchMtg(page, "Empty fixture");
-  await expect(page.getByText("No cards found", { exact: true })).toBeVisible();
+  await expect(page.locator(".results-label")).toContainText("No cards found");
   await searchMtg(page, "Offline fixture");
   await expect(page.getByRole("alert")).toContainText("Could not connect");
   await expect(
@@ -316,21 +316,17 @@ test("malformed, hostile and oversized backups are rejected before rendering ext
   await expect(page.getByRole("status")).toContainText("unsafe link");
   await importData(page, { ...backup, collection: [entry, entry] });
   await expect(page.getByRole("status")).toContainText("duplicate entry IDs");
-  await page
-    .getByLabel("Import JSON backup", { exact: true })
-    .setInputFiles({
-      name: "bad.json",
-      mimeType: "application/json",
-      buffer: Buffer.from("{broken"),
-    });
+  await page.getByLabel("Import JSON backup", { exact: true }).setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{broken"),
+  });
   await expect(page.getByRole("status")).toContainText("not valid JSON");
-  await page
-    .getByLabel("Import JSON backup", { exact: true })
-    .setInputFiles({
-      name: "large.json",
-      mimeType: "application/json",
-      buffer: Buffer.alloc(10_000_001, " "),
-    });
+  await page.getByLabel("Import JSON backup", { exact: true }).setInputFiles({
+    name: "large.json",
+    mimeType: "application/json",
+    buffer: Buffer.alloc(10_000_001, " "),
+  });
   await expect(page.getByRole("status")).toContainText("smaller than 10 MB");
 });
 
@@ -370,7 +366,9 @@ test("aggregate import limits protect the persisted collection", async ({
     .getByRole("button", { name: "Import backup", exact: true })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Import this backup?" }).getByRole("alert"),
+    page
+      .getByRole("dialog", { name: "Import this backup?" })
+      .getByRole("alert"),
   ).toContainText("too many entries");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.reload();
@@ -585,7 +583,7 @@ test("invalid review quantities cannot be confirmed and collection removal can b
 
 test("long imported names wrap safely in collection, review and decks on a narrow screen", async ({
   page,
-}) => {
+}, testInfo) => {
   await open(page);
   await page.setViewportSize({ width: 320, height: 900 });
   const longCard = { ...card, name: "A".repeat(500), setName: "B".repeat(500) };
@@ -612,10 +610,32 @@ test("long imported names wrap safely in collection, review and decks on a narro
     await page
       .getByRole("button", { name, exact: typeof name === "string" })
       .click();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
+    const layout = await page.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      overflowing: [...document.querySelectorAll("body *")]
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            tag: element.tagName,
+            className: element.className,
+            right: rect.right,
+            left: rect.left,
+          };
+        })
+        .filter(
+          (element) => element.right > innerWidth + 1 || element.left < -1,
+        )
+        .slice(0, 15),
+    }));
+    expect
+      .soft(layout.width, `${String(name)}: ${JSON.stringify(layout)}`)
+      .toBeLessThanOrEqual(layout.viewport);
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `long-name-${String(name).replace(/[^a-z0-9]/gi, "-")}.png`,
       ),
-    ).toBe(true);
+      fullPage: true,
+    });
   }
 });

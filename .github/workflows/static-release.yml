@@ -13,8 +13,14 @@ concurrency:
   group: static-release
   cancel-in-progress: false
 jobs:
+  verify:
+    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && vars.DEPLOY_REQUESTS_ENABLED == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_runner: ${{ inputs.build_runner }}
   publish:
     name: Publish retained static site
+    needs: verify
     if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && vars.DEPLOY_REQUESTS_ENABLED == 'true'
     runs-on: ${{ (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
     timeout-minutes: 45
@@ -29,8 +35,6 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: npm run check
-      - run: npm audit --omit=dev --audit-level=high
       - name: Fetch and verify the pinned public numeric reference data
         run: python3 scripts/fetch-static-reference.py "$RUNNER_TEMP/static-reference"
       - name: Build and stage the complete same-origin root application

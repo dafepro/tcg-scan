@@ -1,6 +1,11 @@
 name: CI
 # The owner can run trusted main on Mac (default) or explicitly select Ubuntu.
 on:
+  workflow_call:
+    inputs:
+      build_runner:
+        type: string
+        default: default
   workflow_dispatch:
     inputs:
       build_runner:

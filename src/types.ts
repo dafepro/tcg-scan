@@ -1,3 +1,5 @@
+import type { PersistedPrintingEvidence } from "./lib/printing-evidence";
+
 export type Game = "pokemon" | "mtg" | "yugioh";
 export type Condition =
   | "Unknown"
@@ -29,6 +31,8 @@ export interface Card {
   description?: string;
 }
 export interface CatalogPrintingRead {
+  /** Optional additive migration: old rows remain identity-only and unversioned. */
+  evidence?: PersistedPrintingEvidence;
   referenceId: string;
   setName: string;
   setCode: string;

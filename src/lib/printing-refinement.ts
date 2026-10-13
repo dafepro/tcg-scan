@@ -1,4 +1,15 @@
 import type { ReferenceMetadata, VisionGame } from "./vision/types";
+import type { PrintingCatalogProvenance } from "./printing-evidence";
+import {
+  measurePrintingRegions,
+  validPrintingPixels,
+  PRINTING_REGION_LIMITS,
+} from "./printing-regions";
+import type { PrintingRegionEvidence } from "./printing-regions";
+
+/** Pinned configuration identity, not runtime verification of downloaded asset bytes. */
+export const PRINTING_READER_VERSION =
+  "tesseract-6.0.1-eng-4.0.0-oem1-psm11-dpi300-regions-v1";
 
 /** Catalog metadata must describe the actual printed field, not a guessed alias. */
 export interface PrintingCandidate extends ReferenceMetadata {
@@ -32,11 +43,14 @@ export interface PrintingFields {
   rarity?: string;
 }
 export interface PrintingObservation extends PrintingCapture {
-  /** Hash of the source pixels. Matching hashes cannot provide independent votes. */
+  /** Hash of the source pixels. Matching hashes cannot provide distinct-capture votes. */
   imageFingerprint: string;
   rawText: string;
   fields: PrintingFields;
   issues: string[];
+  /** Optional for legacy observations; identifies the configured local reader. */
+  readerVersion?: string;
+  regions?: PrintingRegionEvidence[];
 }
 export interface PrintingResolution {
   state: "unresolved" | "catalog-printing-read";
@@ -44,6 +58,7 @@ export interface PrintingResolution {
   reference?: PrintingCandidate;
   reasons: string[];
   evidence: PrintingObservation[];
+  catalogProvenance?: PrintingCatalogProvenance;
   finish: "unknown";
   condition: "unknown";
   priceEligible: false;
@@ -65,6 +80,7 @@ export interface ResolvePrintingInput {
    */
   catalogCompleteForIdentity: boolean;
   observations: readonly PrintingObservation[];
+  catalogProvenance?: PrintingCatalogProvenance;
 }
 
 export const PRINTING_LIMITS = Object.freeze({
@@ -115,7 +131,12 @@ const localeKey = (value: string) =>
 
 /** Literal OCR parsing only: no O→0, guessed set symbols, or catalog-conditioned repair. */
 export function parsePrintingObservation(
-  input: PrintingCapture & { rawText: string; imageFingerprint: string },
+  input: PrintingCapture & {
+    rawText: string;
+    imageFingerprint: string;
+    readerVersion?: string;
+    regions?: PrintingRegionEvidence[];
+  },
 ): PrintingObservation {
   const rawText = input.rawText.slice(0, PRINTING_LIMITS.rawText);
   const fields: PrintingFields = {};
@@ -248,6 +269,9 @@ export function resolvePrintingEvidence(
     state: "unresolved",
     reasons,
     evidence,
+    ...(input.catalogProvenance
+      ? { catalogProvenance: input.catalogProvenance }
+      : {}),
     finish: "unknown",
     condition: "unknown",
     priceEligible: false,
@@ -294,14 +318,17 @@ export function resolvePrintingEvidence(
   )
     return unresolved("conflicting-observations");
   const first = good[0];
-  const independent = good.find(
+  // Distinct source IDs/pixels are not calibrated statistical independence:
+  // adjacent near-duplicate captures can share errors. This legacy gate alone
+  // cannot establish physical-variant certainty or eliminate that correlation.
+  const distinct = good.find(
     (other) =>
       other.frameId !== first.frameId &&
       other.imageFingerprint !== first.imageFingerprint &&
       Math.abs(other.capturedAt - first.capturedAt) >=
         PRINTING_LIMITS.minFrameGapMs,
   );
-  if (!independent) return unresolved("two-independent-captures-required");
+  if (!distinct) return unresolved("two-distinct-captures-required");
   const matches: PrintingCandidate[] = [];
   let incomplete = false;
   for (const candidate of input.candidates) {
@@ -320,11 +347,14 @@ export function resolvePrintingEvidence(
     state: "catalog-printing-read",
     reference: matches[0],
     reasons: [
-      "two-independent-captures-agree",
+      "two-distinct-captures-agree",
       "catalog-fields-match",
       "finish-and-condition-unconfirmed",
     ],
     evidence,
+    ...(input.catalogProvenance
+      ? { catalogProvenance: input.catalogProvenance }
+      : {}),
     finish: "unknown",
     condition: "unknown",
     priceEligible: false,
@@ -576,14 +606,27 @@ export function createPrintingReader(
     let pixels: ImageData;
     try {
       if ("data" in image) {
-        if (image.data.length !== width * height * 4)
-          throw new Error("Invalid RGBA image");
+        if (!validPrintingPixels(image))
+          throw new PrintingReaderError(
+            "image-quality",
+            "Invalid printing RGBA pixels.",
+          );
         context.putImageData(image, 0, 0);
       } else context.drawImage(image, 0, 0);
       pixels = context.getImageData(0, 0, width, height);
+      if (
+        pixels.width !== width ||
+        pixels.height !== height ||
+        !validPrintingPixels(pixels)
+      )
+        throw new PrintingReaderError(
+          "image-quality",
+          "Invalid printing RGBA pixels.",
+        );
       const digest = await crypto.subtle.digest(
         "SHA-256",
-        pixels.data.buffer as ArrayBuffer,
+        // Hash only this view; a nonzero byteOffset must not include unrelated pixels.
+        pixels.data,
       );
       check(token, signal);
       const imageFingerprint =
@@ -591,40 +634,28 @@ export function createPrintingReader(
         Array.from(new Uint8Array(digest), (byte) =>
           byte.toString(16).padStart(2, "0"),
         ).join("");
+      // Measure the same snapshot before OCR: no selection based on its answer.
+      const regions = measurePrintingRegions(pixels, {
+        ...input,
+        imageFingerprint,
+      });
       await initialize(token, signal);
-      const zones =
-        input.game === "yugioh"
-          ? [
-              [0.51, 0.18],
-              [0.88, 0.12],
-            ]
-          : [
-              [
-                input.game === "mtg" ? 0.81 : 0.78,
-                input.game === "mtg" ? 0.19 : 0.22,
-              ],
-            ];
       const texts: string[] = [];
-      for (const [top, fraction] of zones) {
+      for (const region of regions) {
         check(token, signal);
         const crop = document.createElement("canvas");
         // Downscale only. Upscaling cannot recover absent printing detail.
-        const scale = Math.min(1, 1800 / width);
-        const cropHeight = Math.min(
-          height - Math.floor(top * height),
-          Math.ceil(fraction * height),
-        );
-        crop.width = Math.round(width * scale);
-        crop.height = Math.max(1, Math.round(cropHeight * scale));
+        crop.width = region.outputWidth;
+        crop.height = region.outputHeight;
         try {
           const cropContext = crop.getContext("2d");
           if (!cropContext) throw new Error("Canvas unavailable");
           cropContext.drawImage(
             full,
-            0,
-            Math.floor(top * height),
-            width,
-            cropHeight,
+            region.x,
+            region.y,
+            region.width,
+            region.height,
             0,
             0,
             crop.width,
@@ -657,6 +688,9 @@ export function createPrintingReader(
             typeof data.text !== "string"
           )
             throw new Error("Invalid OCR result");
+          region.rawText = data.text.slice(0, PRINTING_REGION_LIMITS.rawText);
+          region.rawTextTruncated =
+            data.text.length > PRINTING_REGION_LIMITS.rawText;
           texts.push(data.text.slice(0, PRINTING_LIMITS.rawText + 1));
         } finally {
           crop.width = 0;
@@ -672,6 +706,8 @@ export function createPrintingReader(
         game: input.game,
         imageFingerprint,
         rawText: texts.join("\n"),
+        readerVersion: PRINTING_READER_VERSION,
+        regions,
       });
     } finally {
       full.width = 0;

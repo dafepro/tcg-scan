@@ -21,7 +21,7 @@
     "evaluate:photos": "node --import tsx scripts/evaluate-photos.ts",
     "prepare:assets": "node scripts/prepare-ocr.mjs && node scripts/prepare-vision-models.mjs",
     "build:learned-index": "node --import tsx scripts/build-learned-index.mjs",
-    "test:packaging": "node --test scripts/stage-static-reference-data.test.mjs"
+    "test:packaging": "node --test scripts/stage-static-reference-data.test.mjs scripts/ocr-runtime-assets.test.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "5.0.0-release.1",

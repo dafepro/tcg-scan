@@ -36,7 +36,13 @@ VITE_TCG_REFERENCE_MODE=static npm run build -- \
   --base / --outDir "$BUILD_ROOT/dist"
 ```
 
-Do not reuse an arbitrary output directory or add `--emptyOutDir` to erase one. Do not build from a checkout containing secrets in client-visible Vite variables. The complete static assets are about 92 MB before reference data; the reference data adds about 391 MB. Allow extra disk space for source, build, staging and the browser's IndexedDB import. Check that the chosen paths are disk-backed: a RAM-backed temporary directory can consume the memory needed by the scanner.
+Do not reuse an arbitrary output directory or add `--emptyOutDir` to erase one. Do not build from a checkout containing secrets in client-visible Vite variables. The reviewed runtime-pruned static assets are about 55.56 MB before reference data (the published baseline was about 92 MB); the reference data adds about 391 MB. Allow extra disk space for source, build, staging and the browser's IndexedDB import. Check that the chosen paths are disk-backed: a RAM-backed temporary directory can consume the memory needed by the scanner.
+
+## Runtime asset layout
+
+OCR preparation stages only the unchanged SIMD-LSTM and non-SIMD-LSTM self-contained Tesseract wrappers. Both remain required, along with the worker, the unchanged English `4.0.0` model and every license. `ocr/runtime-provenance.json` records wrapper and embedded-WASM hashes. Preparation removes only six exact retired generated filenames whose bytes match the reviewed version; unknown bytes or symlinks fail closed, and other files are preserved. Rebuild rather than manually deleting a fallback.
+
+The exact ORT WASM fallback specifier resolves through Vite to the existing verified `vision-models/ort-wasm-simd-threaded.wasm`, including subpath builds. The official glue and both vendor/staged WASM hashes must match the pinned version before building; a duplicate emitted ORT WASM fails the build. Application-side runtime integrity checks are unchanged. This reduces deployed file inventory, not the browser's already-observed cold download, because those redundant files were not requested.
 
 ## Verify, then stage a fresh local bundle
 

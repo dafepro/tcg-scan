@@ -47,10 +47,9 @@ const required = [
     "eng.traineddata.gz",
     "model-provenance.json",
   ].map((x) => `ocr/${x}`),
-  ...["", "-lstm", "-simd", "-simd-lstm"].flatMap((variant) => [
-    `ocr/tesseract-core${variant}.wasm`,
-    `ocr/tesseract-core${variant}.wasm.js`,
-  ]),
+  "ocr/runtime-provenance.json",
+  "ocr/tesseract-core-lstm.wasm.js",
+  "ocr/tesseract-core-simd-lstm.wasm.js",
   ...[
     "fastweb-MODEL-CARD.md",
     "fastweb-single-1.39.onnx",
@@ -432,6 +431,20 @@ for (const [name, change, expected] of [
     async (f) => put(join(f.build, "assets/index-original.js.map"), "{}"),
     /Unapproved build entry/,
   ],
+  ...[
+    "tesseract-core-lstm.wasm.js",
+    "tesseract-core-simd-lstm.wasm.js",
+    "runtime-provenance.json",
+  ].map((name) => [
+    `missing required OCR asset ${name}`,
+    async (f) => rm(join(f.build, "ocr", name)),
+    /Missing runtime asset\/notice/,
+  ]),
+  [
+    "retired standalone OCR WASM",
+    async (f) => put(join(f.build, "ocr/tesseract-core-lstm.wasm"), "retired"),
+    /Unapproved build entry/,
+  ],
   [
     "missing notice",
     async (f) => rm(join(f.build, "vision-models/learned-models-NOTICE.md")),
@@ -623,22 +636,6 @@ test("generates only reviewed MIME/cache headers, covered by the checksums", asy
         "Content-Type": "text/javascript; charset=utf-8",
         "Cache-Control": immutable,
       },
-    ],
-    [
-      "/ocr/tesseract-core-lstm.wasm",
-      { "Content-Type": "application/wasm", "Cache-Control": "no-cache" },
-    ],
-    [
-      "/ocr/tesseract-core-simd-lstm.wasm",
-      { "Content-Type": "application/wasm", "Cache-Control": "no-cache" },
-    ],
-    [
-      "/ocr/tesseract-core-simd.wasm",
-      { "Content-Type": "application/wasm", "Cache-Control": "no-cache" },
-    ],
-    [
-      "/ocr/tesseract-core.wasm",
-      { "Content-Type": "application/wasm", "Cache-Control": "no-cache" },
     ],
     [
       "/vision-models/ort-wasm-simd-threaded.wasm",

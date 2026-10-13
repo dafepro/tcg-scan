@@ -31,10 +31,9 @@ const REQUIRED_BUILD_FILES = [
   "ocr/TESSDATA-LICENSE.txt",
   "ocr/eng.traineddata.gz",
   "ocr/model-provenance.json",
-  ...["", "-lstm", "-simd", "-simd-lstm"].flatMap((variant) => [
-    `ocr/tesseract-core${variant}.wasm`,
-    `ocr/tesseract-core${variant}.wasm.js`,
-  ]),
+  "ocr/runtime-provenance.json",
+  "ocr/tesseract-core-lstm.wasm.js",
+  "ocr/tesseract-core-simd-lstm.wasm.js",
   "vision-models/fastweb-MODEL-CARD.md",
   "vision-models/fastweb-single-1.39.onnx",
   "vision-models/learned-models-NOTICE.md",

@@ -1,3 +1,4 @@
+import { summarizePrintingEvidence } from "./printing-evidence";
 import type { Card, CollectionEntry } from "../types";
 import type { ReferenceMetadata } from "./vision/types";
 export function referenceCard(reference: ReferenceMetadata): Card {
@@ -123,6 +124,7 @@ export function refineScanPrinting(
     return {
       ...entry,
       printingRead: {
+        evidence: summarizePrintingEvidence(eventId, resolution),
         referenceId: card.id,
         setName: card.setName,
         setCode: reference.setCode ?? "",

@@ -1,4 +1,5 @@
 import type { ReferenceMetadata } from "./vision/types";
+import type { PrintingCatalogProvenance } from "./printing-evidence";
 import {
   createPrintingReader,
   resolvePrintingEvidence,
@@ -14,6 +15,7 @@ export interface PrintingCatalogResult {
   candidates: PrintingCandidate[];
   catalogCompleteForIdentity: boolean;
   scope: string;
+  provenance?: PrintingCatalogProvenance;
   error?: string;
 }
 export interface PrintingFrame {
@@ -39,6 +41,9 @@ interface Dependencies {
   reader?: () => PrintingReader;
   isCurrent(frame: PrintingFrame): boolean;
   onStatus(eventId: string, status: string): void;
+  /** Bounded unresolved reasons and native region measurements, including reads
+   * that do not qualify for onResolution. Reporting cannot affect acceptance. */
+  onDiagnostics?(eventId: string, result: PrintingResolution): void;
   onResolution(eventId: string, result: PrintingResolution): string | undefined;
 }
 /** One optional footer read at a time, independent of identity saves and vision scheduling. */
@@ -160,8 +165,19 @@ export class PrintingSession {
         identityKey: frame.reference.identityKey,
         candidates: catalog.candidates,
         catalogCompleteForIdentity: catalog.catalogCompleteForIdentity,
+        catalogProvenance: catalog.provenance,
         observations: event.observations,
       });
+      try {
+        if (this.dependencies.onDiagnostics)
+          this.dependencies.onDiagnostics(
+            frame.eventId,
+            structuredClone(resolution),
+          );
+      } catch {
+        /* Optional diagnostics cannot alter persistence or reader ownership. */
+      }
+      if (!current()) return false;
       if (resolution.state === "catalog-printing-read") {
         const failure = this.dependencies.onResolution(
           frame.eventId,

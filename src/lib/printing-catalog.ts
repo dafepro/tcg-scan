@@ -1,8 +1,11 @@
+import { catalogProvenance } from "./printing-evidence";
+import type { PrintingCatalogProvenance } from "./printing-evidence";
 import type { PrintingCandidate } from "./printing-refinement";
 import type { ReferenceMetadata, VisionGame } from "./vision/types";
 
 /** Metadata only: no photographs, artwork requests, prices, or finish inference. */
 export interface PrintingCatalogSnapshot {
+  provenance?: PrintingCatalogProvenance;
   candidates: PrintingCandidate[];
   /** Complete only within `scope`, never all physical editions/finishes/languages. */
   catalogCompleteForIdentity: boolean;
@@ -610,7 +613,9 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
       try {
         const value = signal ? await raceSignal(task.promise, signal) : await task.promise;
         check(signal);
-        return { ...clone(value), referenceKey: reference.key };
+        const provenance = await catalogProvenance(value);
+        check(signal);
+        return { ...clone(value), provenance, referenceKey: reference.key };
       } finally {
         task.subscribers--;
         if (!task.subscribers && !task.settled) task.controller.abort();

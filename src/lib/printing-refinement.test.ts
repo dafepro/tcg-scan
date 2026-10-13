@@ -3,6 +3,7 @@ import {
   createPrintingReader,
   parsePrintingObservation,
   PRINTING_LIMITS,
+  PRINTING_READER_VERSION,
   resolvePrintingEvidence,
 } from "./printing-refinement";
 import type {
@@ -227,11 +228,11 @@ describe("conservative catalog printing resolution", () => {
       "same capture time",
       { frameId: "different", capturedAt: 1000, imageFingerprint: "pixels-2" },
     ],
-  ])("does not count %s as independent", (_, second) => {
+  ])("does not count %s as distinct", (_, second) => {
     expect(
       resolve({ observations: [observation(), observation("025/198", second)] })
         .reasons,
-    ).toContain("two-independent-captures-required");
+    ).toContain("two-distinct-captures-required");
   });
   it("ignores stale event/session/game callbacks", () => {
     for (const stale of [
@@ -386,6 +387,25 @@ describe("conservative catalog printing resolution", () => {
       }).state,
     ).toBe("unresolved");
   });
+  it("forwards the actual optional catalog snapshot in unresolved and resolved results", () => {
+    const catalogProvenance = {
+      schemaVersion: 1 as const,
+      snapshotId: "sha256:" + "a".repeat(64),
+      provider: "fixture-provider",
+      scope: "fixture-identity",
+      fetchedAt: "2026-10-13T03:30:00.000Z",
+      stale: false,
+      completeWithinScope: true,
+      candidateCount: 1,
+    };
+    expect(resolve({ catalogProvenance }).catalogProvenance).toEqual(
+      catalogProvenance,
+    );
+    expect(
+      resolve({ catalogProvenance, observations: [] }).catalogProvenance,
+    ).toEqual(catalogProvenance);
+    expect(resolve()).not.toHaveProperty("catalogProvenance");
+  });
   it("requires Magic set code and language in addition to collector number", () => {
     const one = parsePrintingObservation({
       ...observation(),
@@ -419,6 +439,7 @@ describe("conservative catalog printing resolution", () => {
 class FakeWorker {
   static instances: FakeWorker[] = [];
   static auto = true;
+  static text = "025/198";
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   onmessageerror: (() => void) | null = null;
@@ -429,7 +450,7 @@ class FakeWorker {
         this.reply(
           message.jobId,
           message.action === "recognize"
-            ? { text: "025/198", confidence: 99 }
+            ? { text: FakeWorker.text, confidence: 99 }
             : {},
         ),
       );
@@ -463,6 +484,7 @@ describe("persistent bounded local printing reader", () => {
   beforeEach(() => {
     FakeWorker.instances = [];
     FakeWorker.auto = true;
+    FakeWorker.text = "025/198";
     canvases = [];
     vi.stubGlobal("window", {
       location: { href: "https://test.local/", origin: "https://test.local" },
@@ -479,7 +501,11 @@ describe("persistent bounded local printing reader", () => {
           getContext: () => ({
             drawImage: vi.fn(),
             putImageData: vi.fn(),
-            getImageData: () => ({ data: new Uint8ClampedArray(16) }),
+            getImageData: () => ({
+              width: canvas.width,
+              height: canvas.height,
+              data: new Uint8ClampedArray(canvas.width * canvas.height * 4),
+            }),
           }),
           toBlob: (callback: (blob: Blob) => void) =>
             callback(new Blob(["local-image-bytes"], { type: "image/png" })),
@@ -530,6 +556,102 @@ describe("persistent bounded local printing reader", () => {
     ).toBe(true);
     reader.dispose();
     expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+  it("retains native region geometry, literal OCR, config provenance and original full-card lineage", async () => {
+    const reader = createPrintingReader();
+    const result = await reader.read(readInput({ game: "yugioh" }));
+    expect(result.readerVersion).toBe(PRINTING_READER_VERSION);
+    expect(result.regions).toHaveLength(2);
+    expect(
+      result.regions?.map((region) => [
+        region.regionId,
+        region.y,
+        region.height,
+      ]),
+    ).toEqual([
+      ["yugioh-set-code", 428, 152],
+      ["yugioh-footer", 739, 101],
+    ]);
+    for (const region of result.regions!) {
+      expect(region).toMatchObject({
+        frameId: result.frameId,
+        imageFingerprint: result.imageFingerprint,
+        sourceMinEdge: 600,
+        width: 600,
+        outputWidth: 600,
+        rawText: "025/198",
+        rawTextTruncated: false,
+      });
+      expect(region.outputHeight).toBe(region.height);
+    }
+    // Quality advisories are not acceptance issues and cannot add extra votes.
+    expect(result.issues).toEqual([]);
+    expect(result.regions![0].qualityReasons).toContain("no-luminance-detail");
+    expect(resolve({ observations: [result] }).state).toBe("unresolved");
+    reader.dispose();
+  });
+  it("bounds literal per-region text without catalog-conditioned repair", async () => {
+    const rawText = "O25/I98  " + "x".repeat(3000);
+    FakeWorker.text = rawText;
+    const reader = createPrintingReader();
+    const result = await reader.read(readInput());
+    expect(result.fields).toEqual({});
+    expect(result.rawText).toBe(rawText.slice(0, 2048));
+    expect(result.regions![0].rawText).toBe(rawText.slice(0, 2048));
+    expect(result.regions![0].rawTextTruncated).toBe(true);
+    expect(result.issues).toContain("ocr-text-truncated");
+    reader.dispose();
+  });
+  it("hashes only the actual pixel view, preserving lineage with a larger backing buffer", async () => {
+    const data = new Uint8ClampedArray(
+      new ArrayBuffer(600 * 840 * 4 + 32),
+      16,
+      600 * 840 * 4,
+    );
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          drawImage: vi.fn(),
+          getImageData: () => ({ width: 600, height: 840, data }),
+        }),
+        toBlob: (callback: (blob: Blob) => void) =>
+          callback(new Blob(["local-image-bytes"])),
+      }),
+    });
+    const reader = createPrintingReader();
+    const result = await reader.read(readInput());
+    const hashCall = vi.mocked(crypto.subtle.digest).mock.calls[0];
+    expect(hashCall[0]).toBe("SHA-256");
+    expect(hashCall[1]).toBe(data);
+    expect(result.imageFingerprint).toBe("600x840:010203");
+    expect(result.regions![0].imageFingerprint).toBe(result.imageFingerprint);
+    reader.dispose();
+  });
+  it("rejects malformed readback pixels before hash, worker allocation or OCR", async () => {
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          drawImage: vi.fn(),
+          getImageData: () => ({
+            width: 600,
+            height: 840,
+            data: new Uint8ClampedArray(16),
+          }),
+        }),
+      }),
+    });
+    const reader = createPrintingReader();
+    await expect(reader.read(readInput())).rejects.toMatchObject({
+      code: "image-quality",
+    });
+    expect(crypto.subtle.digest).not.toHaveBeenCalled();
+    expect(FakeWorker.instances).toHaveLength(0);
+    expect(reader.busy).toBe(false);
+    reader.dispose();
   });
   it("skips a burst while busy without growing a queue or cancelling the running job", async () => {
     FakeWorker.auto = false;
@@ -642,7 +764,11 @@ describe("persistent bounded local printing reader", () => {
         height: 0,
         getContext: () => ({
           drawImage: vi.fn(),
-          getImageData: () => ({ data: new Uint8ClampedArray(16) }),
+          getImageData: () => ({
+            width: 600,
+            height: 840,
+            data: new Uint8ClampedArray(600 * 840 * 4),
+          }),
         }),
         toBlob: (callback: (blob: Blob) => void) => {
           finishEncoding = callback;

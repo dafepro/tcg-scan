@@ -1,3 +1,4 @@
+import { confirmSessionSwitch, openDisclosure } from "./fixtures/disclosures";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -175,6 +176,7 @@ async function deterministicCamera(
   await page.goto("/");
   // Install our original descriptor fixture through the real import path.
   // A Worker stub must not bypass the production zero-coverage setup guard.
+  await openDisclosure(page, "Compatibility import and other reference packs");
   await scanner(page)
     .getByLabel("Import feature packs")
     .setInputFiles(fixturePack);
@@ -243,11 +245,13 @@ test("empty selected-game coverage promotes setup without opening camera or work
     scan.getByLabel("Multi-card photo", { exact: true }),
   ).toBeDisabled();
   // Coverage is per selected game, even when another game's fixture is ready.
+  await openDisclosure(page, "Compatibility import and other reference packs");
   await scan.getByLabel("Import feature packs").setInputFiles(fixturePack);
   await expect(scan).toContainText("9 installed references");
   await expect(
     scan.getByRole("button", { name: "Start continuous camera" }),
   ).toBeEnabled();
+  await openDisclosure(page, "Change game");
   await page.getByRole("button", { name: "Magic", exact: true }).click();
   await expect(
     scan.getByText("Set up Magic: The Gathering recognition", { exact: true }),
@@ -274,6 +278,7 @@ test("continuous controls preserve two copies, suppress undo, and rearm only on 
   page,
 }) => {
   await deterministicCamera(page);
+  await openDisclosure(page, "Scan options");
   await page.getByLabel("Session mode").selectOption("binder");
   await scanner(page)
     .getByRole("button", { name: "Start continuous camera" })
@@ -302,7 +307,7 @@ test("continuous controls preserve two copies, suppress undo, and rearm only on 
     .click();
   await expect(receipts(page)).toHaveCount(4);
   await scanner(page)
-    .getByRole("button", { name: "Stop", exact: true })
+    .getByRole("button", { name: "End session", exact: true })
     .click();
   await expect.poll(async () => (await metrics(page)).stopped).toBe(1);
   await page.reload();
@@ -329,7 +334,7 @@ test("late in-flight analysis cannot save after Stop or navigation", async ({
   await expect.poll(async () => (await metrics(page)).analyses).toBe(3);
   await page.waitForTimeout(300); // Pending third observation would otherwise complete stabilization.
   await scanner(page)
-    .getByRole("button", { name: "Stop", exact: true })
+    .getByRole("button", { name: "End session", exact: true })
     .click();
   await release(page);
   await expect(receipts(page)).toHaveCount(0);
@@ -343,6 +348,7 @@ test("late in-flight analysis cannot save after Stop or navigation", async ({
   await expect.poll(async () => (await metrics(page)).analyses).toBe(6);
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: "Collection", exact: true }).click();
+  await confirmSessionSwitch(page);
   await release(page);
   await expect(
     page.getByText("0 collection entries", { exact: true }),
@@ -354,6 +360,7 @@ test("New page rejects a pending prior-page stabilization frame", async ({
   page,
 }) => {
   await deterministicCamera(page, { hold: true });
+  await openDisclosure(page, "Scan options");
   await page.getByLabel("Session mode").selectOption("binder");
   await scanner(page)
     .getByRole("button", { name: "Start continuous camera" })
@@ -371,7 +378,7 @@ test("New page rejects a pending prior-page stabilization frame", async ({
   await expect.poll(async () => (await metrics(page)).analyses).toBe(4);
   await expect(receipts(page)).toHaveCount(0);
   await scanner(page)
-    .getByRole("button", { name: "Stop", exact: true })
+    .getByRole("button", { name: "End session", exact: true })
     .click();
 });
 
@@ -385,13 +392,146 @@ test("storage failure never shows a successful automatic save", async ({
   await expect(scanner(page)).toContainText("Scan was not saved");
   await expect(receipts(page)).toHaveCount(0);
   await scanner(page)
-    .getByRole("button", { name: "Stop", exact: true })
+    .getByRole("button", { name: "End session", exact: true })
     .click();
   await page.getByRole("button", { name: "Collection", exact: true }).click();
   await expect(
     page.getByText("0 collection entries", { exact: true }),
   ).toBeVisible();
 });
+
+const savedCollection = (page: Page) =>
+  page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem("tcg-scan:data:v1") ?? "{}").collection ??
+      [],
+  );
+
+test("a denied new Live session preserves the previous receipts and collection", async ({
+  page,
+}) => {
+  await deterministicCamera(page);
+  await scanner(page)
+    .getByRole("button", { name: "Start continuous camera" })
+    .click();
+  await expect(receipts(page)).toHaveCount(2);
+  await scanner(page)
+    .getByRole("button", { name: "End session", exact: true })
+    .click();
+  const before = await savedCollection(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException("Synthetic restart denial", "NotAllowedError");
+      },
+    });
+  });
+  await scanner(page)
+    .getByRole("button", { name: "Start continuous camera" })
+    .click();
+  await expect(
+    scanner(page).getByRole("button", { name: "Start continuous camera" }),
+  ).toBeEnabled();
+  await expect(scanner(page).locator(".live-error")).toBeVisible();
+  await expect(receipts(page)).toHaveCount(2);
+  await expect(scanner(page)).toContainText("2 saved this session");
+  expect(await savedCollection(page)).toEqual(before);
+});
+
+for (const interruption of ["cancel", "hidden"] as const) {
+  test(`a ${interruption} pending Live restart preserves receipts and stops late permission`, async ({
+    page,
+  }) => {
+    await deterministicCamera(page);
+    await scanner(page)
+      .getByRole("button", { name: "Start continuous camera" })
+      .click();
+    await expect(receipts(page)).toHaveCount(2);
+    await scanner(page)
+      .getByRole("button", { name: "End session", exact: true })
+      .click();
+    const before = await savedCollection(page),
+      previous = await metrics(page);
+    await page.evaluate(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(
+        navigator.mediaDevices,
+      );
+      const state = { ready: false, stopped: 0, release: () => {} };
+      Object.assign(window, { liveRestartFixture: state });
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: async () => {
+          const media = await original({ video: true });
+          for (const track of media.getTracks()) {
+            const stop = track.stop.bind(track);
+            track.stop = () => {
+              state.stopped++;
+              stop();
+            };
+          }
+          return new Promise<MediaStream>((resolve) => {
+            state.ready = true;
+            state.release = () => resolve(media);
+          });
+        },
+      });
+    });
+    await scanner(page)
+      .getByRole("button", { name: "Start continuous camera" })
+      .click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { liveRestartFixture: { ready: boolean } })
+              .liveRestartFixture.ready,
+        ),
+      )
+      .toBe(true);
+    await expect(receipts(page)).toHaveCount(2);
+    await expect(scanner(page)).toContainText("2 saved this session");
+    if (interruption === "cancel") {
+      await scanner(page)
+        .getByRole("button", { name: "Cancel preparation", exact: true })
+        .click();
+    } else {
+      await page.evaluate(() => {
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => true,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    }
+    await expect(
+      scanner(page).getByRole("button", { name: "Start continuous camera" }),
+    ).toBeEnabled();
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => false,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      (
+        window as unknown as { liveRestartFixture: { release(): void } }
+      ).liveRestartFixture.release();
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { liveRestartFixture: { stopped: number } })
+              .liveRestartFixture.stopped,
+        ),
+      )
+      .toBe(1);
+    await expect(receipts(page)).toHaveCount(2);
+    expect(await savedCollection(page)).toEqual(before);
+    expect((await metrics(page)).terminated).toBe(previous.terminated);
+    expect((await metrics(page)).analyses).toBe(previous.analyses);
+  });
+}
 
 test("real local worker auto-adds two synthetic video regions once @live-vision", async ({
   page,
@@ -437,6 +577,7 @@ test("real local worker auto-adds two synthetic video regions once @live-vision"
   await page.goto("/");
   // Fresh contexts have no packs: setup opens after metadata finishes loading.
   // Do not race the temporary pre-load Manage button as it disappears.
+  await openDisclosure(page, "Compatibility import and other reference packs");
   await scanner(page)
     .getByLabel("Import feature packs")
     .setInputFiles(fixturePack);
@@ -453,7 +594,7 @@ test("real local worker auto-adds two synthetic video regions once @live-vision"
     fullPage: true,
   });
   await scanner(page)
-    .getByRole("button", { name: "Stop", exact: true })
+    .getByRole("button", { name: "End session", exact: true })
     .click();
   await page.reload();
   await page.getByRole("button", { name: "Collection", exact: true }).click();
@@ -469,4 +610,71 @@ test("real local worker auto-adds two synthetic video regions once @live-vision"
         r.body === null,
     ),
   ).toBe(true);
+});
+
+test("Live switch warning preserves active and paused capture until explicitly accepted", async ({
+  page,
+}) => {
+  await deterministicCamera(page);
+  await scanner(page)
+    .getByRole("button", { name: "Start continuous camera" })
+    .click();
+  await expect(receipts(page)).toHaveCount(2);
+  const before = await savedCollection(page);
+  await page.getByRole("button", { name: "Collection", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "End this scanning session and switch?",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  const running = await metrics(page);
+  expect(running).toMatchObject({ stopped: 0, terminated: 0 });
+  await expect
+    .poll(async () => (await metrics(page)).analyses)
+    .toBeGreaterThan(running.analyses);
+  await dialog.getByRole("button", { name: "Stay here", exact: true }).click();
+  await expect(receipts(page)).toHaveCount(2);
+  expect(await savedCollection(page)).toEqual(before);
+  await scanner(page)
+    .getByRole("button", { name: "Pause", exact: true })
+    .click();
+  await openDisclosure(page, "Change game");
+  await page.getByRole("button", { name: "Magic", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay here", exact: true }).click();
+  await expect(
+    scanner(page).getByRole("button", { name: "Resume", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Pokémon", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(await metrics(page)).toMatchObject({ stopped: 0, terminated: 0 });
+  expect(await savedCollection(page)).toEqual(before);
+  await page.getByRole("button", { name: "Collection", exact: true }).click();
+  await confirmSessionSwitch(page);
+  await expect.poll(async () => (await metrics(page)).stopped).toBe(1);
+  await expect.poll(async () => (await metrics(page)).terminated).toBe(1);
+  expect(await savedCollection(page)).toEqual(before);
+  await page.getByRole("button", { name: "Scan", exact: true }).click();
+  await expect(page.locator(".session-boundary-note")).toContainText(
+    "Previous live session ended · 2 saved",
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException("Synthetic restart denied", "NotAllowedError");
+      },
+    });
+  });
+  await scanner(page)
+    .getByRole("button", { name: "Start continuous camera" })
+    .click();
+  await expect(
+    scanner(page).getByRole("button", { name: "Start continuous camera" }),
+  ).toBeEnabled();
+  await expect(page.locator(".session-boundary-note")).toContainText(
+    "Previous live session ended · 2 saved",
+  );
+  expect(await savedCollection(page)).toEqual(before);
 });

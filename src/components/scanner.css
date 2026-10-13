@@ -1,11 +1,11 @@
 .scanner-panel {
-  --scan-accent: #b2f58a;
-  --scan-muted: #86938b;
-  border: 1px solid #303a33;
+  --scan-accent: var(--accent);
+  --scan-muted: var(--dim);
+  border: 1px solid var(--border);
   border-radius: 19px;
-  background: #18201b;
+  background: var(--panel);
   overflow: hidden;
-  color: #f1f2e8;
+  color: var(--text);
   min-width: 0;
 }
 .scanner-heading {
@@ -30,13 +30,13 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: #9ba69d;
+  color: var(--muted);
   font-size: 11px;
 }
 .scanner-camera-status > span {
   width: 5px;
   height: 5px;
-  background: #68766c;
+  background: var(--dim);
   border-radius: 50%;
 }
 .scanner-camera-status.is-on {
@@ -44,7 +44,7 @@
 }
 .scanner-camera-status.is-on > span {
   background: var(--scan-accent);
-  box-shadow: 0 0 8px #b2f58a60;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 37.6%, transparent);
 }
 .scanner-viewport {
   height: 426px;
@@ -54,9 +54,21 @@
   position: relative;
   isolation: isolate;
   background:
-    radial-gradient(ellipse at 50% 28%, #37472c34 0%, transparent 60%),
-    linear-gradient(#d6dec904 1px, transparent 1px),
-    linear-gradient(90deg, #d6dec904 1px, transparent 1px), #101612;
+    radial-gradient(
+      ellipse at 50% 28%,
+      color-mix(in srgb, var(--border) 20.4%, transparent) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      color-mix(in srgb, var(--text) 1.6%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--text) 1.6%, transparent) 1px,
+      transparent 1px
+    ),
+    var(--bg);
   background-size:
     auto,
     31px 31px,
@@ -68,7 +80,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border: 1px solid #c7d3bc09;
+  border: 1px solid color-mix(in srgb, var(--text) 3.5%, transparent);
   border-radius: inherit;
   z-index: 6;
 }
@@ -92,7 +104,7 @@
   height: 100%;
   width: 100%;
   object-fit: contain;
-  background: #0d130f;
+  background: var(--preview-bg);
 }
 .scanner-view-top {
   position: absolute;
@@ -105,7 +117,7 @@
   z-index: 3;
   font-size: 10px;
   letter-spacing: 0.4px;
-  color: #9ea99d;
+  color: var(--muted);
 }
 .scanner-view-top > span {
   display: flex;
@@ -114,14 +126,14 @@
 }
 .is-live .scanner-view-top,
 .has-preview .scanner-view-top {
-  color: #e9efdf;
+  color: var(--accent);
   text-shadow: 0 1px 4px #000;
 }
 .scanner-view-dot {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #a8bb99;
+  background: var(--muted);
 }
 .scanner-guide {
   position: absolute;
@@ -136,7 +148,7 @@
   position: absolute;
   width: 18px;
   height: 18px;
-  border-color: #b2f58a65;
+  border-color: color-mix(in srgb, var(--accent) 39.6%, transparent);
   border-style: solid;
   border-width: 0;
   z-index: 3;
@@ -173,7 +185,8 @@
   width: 210px;
   height: 294px;
   top: 52px;
-  box-shadow: 0 0 0 1500px #08110a4f;
+  box-shadow: 0 0 0 1500px
+    color-mix(in srgb, var(--preview-bg) 31%, transparent);
   border-radius: 5px;
 }
 .camera-guide .guide-corner {
@@ -210,16 +223,21 @@
   position: absolute;
   inset: 0;
   border-radius: 9px;
-  border: 1px solid #7c985248;
+  border: 1px solid color-mix(in srgb, var(--dim) 28.2%, transparent);
 }
 .illustration-card-back {
   transform: translateX(-13px) rotate(-13deg);
-  background: linear-gradient(135deg, #34482c, #1d2920);
+  background: linear-gradient(135deg, var(--border), var(--panel));
   box-shadow: -8px 7px 30px #0003;
 }
 .illustration-card-front {
   transform: rotate(8deg);
-  background: linear-gradient(137deg, #526c3b, #2c442c 49%, #1e3123);
+  background: linear-gradient(
+    137deg,
+    var(--border-strong),
+    var(--border) 49%,
+    var(--panel-soft)
+  );
   box-shadow: 8px 9px 22px #0005;
   overflow: hidden;
 }
@@ -228,7 +246,7 @@
   position: absolute;
   inset: 6px;
   border-radius: 5px;
-  border: 1px solid #cdeca527;
+  border: 1px solid color-mix(in srgb, var(--accent) 15.3%, transparent);
 }
 .illustration-card-top {
   position: absolute;
@@ -238,19 +256,19 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #c3dc91ad;
+  color: color-mix(in srgb, var(--accent) 67.8%, transparent);
 }
 .illustration-card-top > span {
   width: 31px;
   height: 3px;
-  background: #d0e0a38c;
+  background: color-mix(in srgb, var(--accent) 54.9%, transparent);
   border-radius: 4px;
 }
 .illustration-orbit {
   position: absolute;
   width: 125px;
   height: 80px;
-  border: 1px solid #bcdfa733;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   border-radius: 50%;
   top: 33px;
   left: -8px;
@@ -265,14 +283,14 @@
   left: 25px;
   height: 58px;
   width: 58px;
-  border: 1px solid #b5d69066;
-  background: #657d4930;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--dim) 18.8%, transparent);
   transform: rotate(45deg);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  color: #ddedbd;
+  color: var(--accent);
 }
 .illustration-diamond > svg {
   transform: rotate(-45deg);
@@ -289,7 +307,7 @@
 .illustration-card-bottom > span {
   width: 100%;
   height: 2px;
-  background: #cce7ac4d;
+  background: color-mix(in srgb, var(--accent) 30.2%, transparent);
   border-radius: 2px;
 }
 .illustration-card-bottom > span:last-child {
@@ -315,7 +333,7 @@
 .scanner-idle-copy p {
   margin: 10px 0 0;
   font-size: 12px;
-  color: #7d8b7f;
+  color: var(--dim);
 }
 .scanner-viewport-note {
   position: absolute;
@@ -325,7 +343,7 @@
   text-align: center;
   font-size: 8px;
   letter-spacing: 1.8px;
-  color: #67765f;
+  color: var(--dim);
 }
 .scanner-align-hint {
   display: flex;
@@ -337,7 +355,7 @@
   left: 0;
   right: 0;
   font-size: 11px;
-  color: #f4f7ef;
+  color: var(--accent);
   text-shadow: 0 1px 5px #000;
   z-index: 2;
 }
@@ -356,9 +374,9 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 2px solid #c4dfb299;
+  border: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   padding: 4px;
-  background: #101b126b;
+  background: color-mix(in srgb, var(--bg) 42%, transparent);
   cursor: pointer;
 }
 .scanner-shutter > span {
@@ -367,12 +385,12 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  color: #25361f;
-  background: #c5f6a6;
+  color: var(--panel-soft);
+  background: var(--accent);
   transition: background 0.15s;
 }
 .scanner-shutter:hover > span {
-  background: #e1ffce;
+  background: var(--accent);
 }
 .scanner-shutter:disabled {
   opacity: 0.5;
@@ -406,20 +424,20 @@
 .scanner-primary {
   flex: 1.25;
   background: var(--scan-accent);
-  color: #24321c;
+  color: var(--panel-soft);
   border-color: var(--scan-accent);
 }
 .scanner-primary:hover:not(:disabled) {
-  background: #c7ffa6;
+  background: var(--accent);
 }
 .scanner-secondary {
   flex: 1;
-  background: #202921;
-  border-color: #3a473a;
-  color: #d7dfcd;
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
 }
 .scanner-secondary:hover:not(:disabled) {
-  background: #2c382c;
+  background: var(--border);
 }
 .scanner-btn-arrow {
   margin-left: auto;
@@ -436,16 +454,16 @@
 }
 .scanner-stop-camera {
   width: 43px;
-  border: 1px solid #475245;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #222c23;
-  color: #c0cbb9;
+  background: var(--panel-soft);
+  color: var(--text);
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 .scanner-stop-camera:hover {
-  background: #3a4738;
+  background: var(--border);
 }
 .scanner-file-input {
   display: none;
@@ -457,7 +475,7 @@
   gap: 10px;
 }
 .scanner-tip-icon {
-  color: #9bad8d;
+  color: var(--muted);
   width: 27px;
   height: 31px;
   display: grid;
@@ -473,19 +491,19 @@
   line-height: 1.5;
 }
 .scanner-tips strong {
-  color: #b5c1ac;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 500;
 }
 .scanner-tips p span {
-  color: #85917f;
+  color: var(--dim);
 }
 .scanner-privacy {
   display: flex;
   gap: 7px;
   align-items: flex-start;
   margin: 17px 25px 20px;
-  color: #788574;
+  color: var(--dim);
 }
 .scanner-privacy > svg {
   flex-shrink: 0;
@@ -500,7 +518,7 @@
   position: absolute;
   inset: 0;
   z-index: 8;
-  background: #09120fc7;
+  background: color-mix(in srgb, var(--preview-bg) 78%, transparent);
   backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
@@ -510,7 +528,7 @@
 .scanner-progress-card {
   text-align: center;
   width: min(300px, 100%);
-  color: #e7eddd;
+  color: var(--text);
 }
 .scanner-progress-card > svg {
   color: var(--scan-accent);
@@ -524,12 +542,12 @@
 }
 .scanner-progress-card p {
   font-size: 11px;
-  color: #a1b197;
+  color: var(--muted);
   margin: 9px 0 20px;
 }
 .scanner-progress-track {
   height: 3px;
-  background: #324431;
+  background: var(--border);
   border-radius: 3px;
   overflow: hidden;
   margin: 0 15px;
@@ -543,7 +561,7 @@
 }
 .scanner-progress-card button {
   background: transparent;
-  color: #c4d2bd;
+  color: var(--text);
   border: 0;
   font: inherit;
   font-size: 11px;
@@ -560,17 +578,17 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  background: #122017e6;
-  border: 1px solid #70836270;
+  background: color-mix(in srgb, var(--bg) 90.2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dim) 43.9%, transparent);
   padding: 6px 6px 6px 11px;
   border-radius: 6px;
   font-size: 11px;
-  color: #d4edc4;
+  color: var(--accent);
   white-space: nowrap;
 }
 .scanner-preview-label button {
-  background: #b2f58a12;
-  color: #d4edc4;
+  background: color-mix(in srgb, var(--accent) 7.1%, transparent);
+  color: var(--accent);
   border: 0;
   border-radius: 3px;
   padding: 6px;
@@ -612,13 +630,13 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  color: #b8ef9a;
+  color: var(--accent);
 }
 .scanner-readout strong {
   font-weight: 500;
 }
 .scanner-readout > div:first-child span {
-  color: #9ba792;
+  color: var(--muted);
   font-size: 10px;
 }
 .scanner-name-options {
@@ -634,23 +652,23 @@
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
-  border: 1px solid #45513c;
-  color: #c2ccba;
-  background: #263221;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  background: var(--panel-soft);
   border-radius: 5px;
   font: inherit;
   font-size: 10px;
   cursor: pointer;
 }
 .scanner-name-options .primary-candidate {
-  border-color: #90b96972;
-  color: #b2f58a;
-  background: #86bd5120;
+  border-color: color-mix(in srgb, var(--dim) 44.7%, transparent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--dim) 12.5%, transparent);
 }
 .scanner-raw-text {
   margin: 12px 20px 0;
   font-size: 10px;
-  color: #9ba792;
+  color: var(--muted);
 }
 .scanner-raw-text summary {
   cursor: pointer;
@@ -662,29 +680,29 @@
   font-size: 10px;
   line-height: 1.6;
   padding: 10px;
-  background: #101711;
+  background: var(--bg);
   border-radius: 5px;
 }
 .scanner-raw-text p {
   font-size: 9px;
 }
 .scanner-recording-bar {
-  border-top: 1px solid #303b2e;
+  border-top: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
   padding: 16px 23px;
-  background: #182019;
+  background: var(--panel);
 }
 .scanner-recording-bar > div {
   display: flex;
   align-items: center;
   gap: 11px;
-  color: #99a78f;
+  color: var(--muted);
 }
 .scanner-recording-bar span {
-  color: #bac6b1;
+  color: var(--text);
   font-size: 11px;
   font-weight: 500;
 }
@@ -692,18 +710,18 @@
   display: block;
   font-weight: 400;
   font-size: 9px;
-  color: #7d8c75;
+  color: var(--dim);
   margin-top: 4px;
 }
 .scanner-recording-bar button {
-  border: 1px solid #43513b;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: #23301f;
+  background: var(--panel-soft);
   padding: 7px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #c2d0b7;
+  color: var(--text);
   font: inherit;
   font-size: 10px;
   cursor: pointer;
@@ -736,7 +754,7 @@
 .scanner-recording-detail {
   padding: 0 23px 15px;
   font-size: 10px;
-  color: #a1b095;
+  color: var(--muted);
   line-height: 1.5;
 }
 .scanner-recording-detail p {
@@ -752,7 +770,7 @@
 .scanner-panel button:focus-visible,
 .scanner-panel a:focus-visible,
 .scanner-panel summary:focus-visible {
-  outline: 2px solid #c4ffa4;
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .scanner-spin {

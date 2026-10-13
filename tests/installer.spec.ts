@@ -1,3 +1,4 @@
+import { confirmSessionSwitch } from "./fixtures/disclosures";
 import { expect, test, type Page } from "@playwright/test";
 import { originalInstallerArchive } from "./fixtures/installer-archive";
 import { POKEMON_REFERENCE_RELEASE } from "../src/lib/pokemon-reference-release";
@@ -144,6 +145,7 @@ test("navigation aborts fixture installation and leaves the new scanner usable",
     .click();
   await expect(scan.getByRole("progressbar")).toBeVisible();
   await page.getByRole("button", { name: "Collection", exact: true }).click();
+  await confirmSessionSwitch(page);
   await expect.poll(() => cancelled).toBe(true);
   await page.getByRole("button", { name: "Scan", exact: true }).click();
   await expect(

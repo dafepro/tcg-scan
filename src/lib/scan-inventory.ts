@@ -30,11 +30,16 @@ export function referenceCard(reference: ReferenceMetadata): Card {
     prices: [],
   };
 }
+export interface ScanSaveOptions {
+  quantitySource?: "user-confirmed";
+}
+
 /** One durable row per physical presentation makes event retry and undo exact. */
 export function addScanEvent(
   collection: CollectionEntry[],
   reference: ReferenceMetadata,
   eventId: string,
+  options?: ScanSaveOptions,
 ): CollectionEntry[] {
   if (
     collection.some(
@@ -53,7 +58,9 @@ export function addScanEvent(
       verification: "identity-only",
       addedAt: new Date().toISOString(),
       notes:
-        "Automatically matched by local visual features. Verify printing, finish and condition before using a market quote.",
+        options?.quantitySource === "user-confirmed"
+          ? "Another physical copy explicitly confirmed by you using an earlier matched identity. Printing, finish and condition remain unconfirmed."
+          : "Automatically matched by local visual features. Verify printing, finish and condition before using a market quote.",
     },
     ...collection,
   ];

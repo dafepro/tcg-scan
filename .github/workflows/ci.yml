@@ -1,7 +1,7 @@
 name: CI
+# Cloud-only development: publication must not automatically run on a personal Mac.
+# This existing runner is used only through an explicitly requested manual dispatch.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,7 +15,7 @@ jobs:
       github.repository == 'dafepro/tcg-scan' &&
       github.actor == 'dafepro' &&
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, macOS, ARM64, dcarrell-mac]
     timeout-minutes: 20
     steps:

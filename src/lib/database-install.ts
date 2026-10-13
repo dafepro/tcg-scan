@@ -22,7 +22,7 @@ const POLL_MS = 750;
 const REQUEST_TIMEOUT_MS = 30_000;
 const UNSUPPORTED =
   "Automatic database installation needs the local TCG Scan server. This host does not provide the installer. Download the reference ZIP and use Install database from ZIP instead.";
-interface InstallOptions {
+export interface InstallOptions {
   signal?: AbortSignal;
   onDownloadProgress?: (progress: PokemonReferenceDownloadStatus) => void;
   onProgress?: (progress: LearnedImportProgress) => void;
@@ -374,13 +374,33 @@ export function createPokemonArchiveSource(
     },
   };
 }
-/** Explicit install action: let the local server fetch and verify the one pinned
- * public ZIP, then install it through the same lazy, CRC/SHA-checked ZIP importer.
- */
+/** Deployment chooses a single explicit transport. Corruption or transport failure
+ * never causes a switch to another origin or installer behind the user's back. */
+export function usesStaticDatabaseInstall(): boolean {
+  return import.meta.env.VITE_TCG_REFERENCE_MODE === "static";
+}
+/** Explicit install action: static hosts stream pinned same-origin files; the
+ * local server downloads the pinned public ZIP through its bounded relay. */
 export async function installPokemonDatabase(
   options: InstallOptions = {},
 ): Promise<LearnedPackMetadata> {
   checkSignal(options.signal);
+  const mode: unknown = import.meta.env.VITE_TCG_REFERENCE_MODE;
+  if (
+    mode !== undefined &&
+    mode !== "" &&
+    mode !== "local" &&
+    mode !== "static"
+  )
+    unavailable(
+      "The database installer is not configured correctly. Ask the host to set its reference mode to static or local, or use Install database from ZIP.",
+    );
+  if (usesStaticDatabaseInstall()) {
+    const { installStaticPokemonDatabase } =
+      await import("./static-database-install");
+    checkSignal(options.signal);
+    return installStaticPokemonDatabase(options);
+  }
   const targetId = `learned:${POKEMON_REFERENCE_RELEASE.manifestSha256}`,
     existing = (await listLearnedPacks()).find((pack) => pack.id === targetId);
   checkSignal(options.signal);

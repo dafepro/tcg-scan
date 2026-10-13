@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:packaging && npm run build",
     "postinstall": "npm run prepare:assets",
     "predev": "npm run prepare:assets",
     "prebuild": "npm run prepare:assets",
@@ -20,7 +20,8 @@
     "benchmark:vision": "node --import tsx scripts/benchmark-vision.ts",
     "evaluate:photos": "node --import tsx scripts/evaluate-photos.ts",
     "prepare:assets": "node scripts/prepare-ocr.mjs && node scripts/prepare-vision-models.mjs",
-    "build:learned-index": "node --import tsx scripts/build-learned-index.mjs"
+    "build:learned-index": "node --import tsx scripts/build-learned-index.mjs",
+    "test:packaging": "node --test scripts/stage-static-reference-data.test.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "5.0.0-release.1",

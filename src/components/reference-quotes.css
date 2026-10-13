@@ -4,8 +4,8 @@
   grid-column: 1 / -1;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--border, #2e3831);
-  color: var(--muted, #a5b3a8);
+  border-top: 1px solid var(--border, var(--border));
+  color: var(--muted, var(--muted));
   font-size: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -18,12 +18,12 @@
   justify-content: space-between;
 }
 .reference-quotes .reference-quotes-heading > strong {
-  color: var(--text, #ecf0e8);
+  color: var(--text, var(--text));
   font-size: 12px;
   font-weight: 600;
 }
 .reference-quotes .reference-quotes-status {
-  color: #c1d4bb;
+  color: var(--text);
   font-size: 11px;
 }
 .reference-quotes .reference-quotes-caution {
@@ -39,11 +39,11 @@
 .reference-quotes .reference-quotes-row {
   display: block;
   padding: 6px 0;
-  border-top: 1px solid #2e383180;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50.2%, transparent);
 }
 .reference-quotes .reference-quotes-line > a {
   min-width: 0;
-  color: #c5ddb9;
+  color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -54,18 +54,18 @@
   gap: 10px;
 }
 .reference-quotes .reference-quotes-line > strong {
-  color: var(--text, #ecf0e8);
+  color: var(--text, var(--text));
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .reference-quotes .reference-quotes-context {
   margin-top: 3px;
-  color: #c1c9bf;
+  color: var(--text);
 }
 .reference-quotes .reference-quotes-time,
 .reference-quotes .reference-quotes-fetched {
-  color: #a8b4aa;
+  color: var(--muted);
   font-size: 11px;
 }
 .reference-quotes .reference-quotes-fetched {
@@ -89,7 +89,7 @@
   padding: 5px 0;
   width: fit-content;
   max-width: 100%;
-  color: #bbd1b1;
+  color: var(--text);
   font-size: 11px;
 }
 .reference-quotes .reference-quotes-provenance p {
@@ -99,28 +99,28 @@
 .reference-quotes .reference-quotes-provenance-row {
   display: block;
   padding: 7px 0;
-  border-top: 1px solid #2e383180;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50.2%, transparent);
   font-size: 11px;
 }
 .reference-quotes .reference-quotes-refresh {
   min-height: 36px;
   margin-top: 6px;
   padding: 7px 10px;
-  border: 1px solid #40513f;
+  border: 1px solid var(--border-strong);
   border-radius: 7px;
-  background: #1c291f;
-  color: #cce7bd;
+  background: var(--panel);
+  color: var(--accent);
   font-size: 11px;
   line-height: 1.5;
   text-align: left;
 }
 .reference-quotes .reference-quotes-refresh:hover:not(:disabled) {
-  background: #263b27;
+  background: var(--border);
 }
 .reference-quotes a:focus-visible,
 .reference-quotes summary:focus-visible,
 .reference-quotes button:focus-visible {
-  outline: 2px solid var(--lime, #b2f58a);
+  outline: 2px solid var(--accent, var(--accent));
   outline-offset: 3px;
   border-radius: 3px;
 }

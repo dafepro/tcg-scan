@@ -8,3 +8,7 @@
 6. Honor provider rates and terms. Do not make tests flood real APIs; use synthetic documented fixtures for deterministic checks.
 
 By submitting a contribution, you agree to license your original contribution under this repository’s MIT license. The project cannot accept rights it does not hold.
+
+## Verification and runner scope
+
+This development phase runs implementation and browser verification on the project’s cloud VM. Publishing source does not automatically invoke a personal Mac: the existing Mac workflow is manual-dispatch only, still restricted to the repository owner and `main`. Use it only after an explicit request to run verification there. No hosted-runner fallback, credential or runner-registration change is introduced. Record the exact source/build hashes and cloud test results with each reviewed checkpoint; do not present an earlier Mac result as verification of a newer commit.

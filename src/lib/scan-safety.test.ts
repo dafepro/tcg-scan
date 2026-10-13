@@ -272,6 +272,12 @@ vi.mock("react", async (importOriginal) => {
     useEffect() {
       /* Durability is exercised synchronously via the actual App callbacks. */
     },
+    useLayoutEffect() {
+      /* Presentation attributes are covered in browser QA. */
+    },
+    useCallback<T>(callback: T) {
+      return callback;
+    },
   };
 });
 
@@ -319,8 +325,12 @@ describe("App durable scan callbacks", () => {
     expect(callbacks).toBeDefined();
     expect(callbacks!.onSave(reference, "durable-readback")).toBeUndefined();
     expect(parseBackup(stored!).collection).toHaveLength(1);
-    const committed = hookAudit.commits.find((entry) => entry.index === 1)
-      ?.value as AppData;
+    const committed = hookAudit.commits.find(
+      (entry) =>
+        typeof entry.value === "object" &&
+        entry.value !== null &&
+        "collection" in entry.value,
+    )?.value as AppData;
     expect(committed.collection).toHaveLength(1);
     expect(getItem).toHaveBeenCalledTimes(2); // Initial load, then pre-write conflict check.
   });
@@ -336,6 +346,13 @@ describe("App durable scan callbacks", () => {
       "Scan was not saved",
     );
     expect(setItem).toHaveBeenCalledOnce();
-    expect(hookAudit.commits.some((entry) => entry.index === 1)).toBe(false);
+    expect(
+      hookAudit.commits.some(
+        (entry) =>
+          typeof entry.value === "object" &&
+          entry.value !== null &&
+          "collection" in entry.value,
+      ),
+    ).toBe(false);
   });
 });

@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   installPokemonDatabase,
   createPokemonArchiveSource,
+  usesStaticDatabaseInstall,
 } from "./database-install";
 import {
   POKEMON_REFERENCE_RELEASE as RELEASE,
   type PokemonReferenceDownloadStatus,
 } from "./pokemon-reference-release";
 import { importLearnedArchiveSource } from "./learned-archive";
+import { installStaticPokemonDatabase } from "./static-database-install";
+vi.mock("./static-database-install", () => ({
+  installStaticPokemonDatabase: vi.fn(),
+}));
 import {
   listLearnedPacks,
   removeCorruptLearnedPack,
@@ -74,6 +79,10 @@ async function flush() {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubEnv("BASE_URL", "/");
+  vi.stubEnv("VITE_TCG_REFERENCE_MODE", "");
+  vi.mocked(installStaticPokemonDatabase)
+    .mockReset()
+    .mockResolvedValue(metadata);
   importer.mockReset();
   importer.mockResolvedValue(metadata);
   vi.mocked(listLearnedPacks).mockReset().mockResolvedValue([]);
@@ -625,5 +634,53 @@ describe("bounded same-origin archive range reader", () => {
       /Invalid bounded/,
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("explicit reference transport selection", () => {
+  it("uses the pinned static loader only in static mode", async () => {
+    vi.stubEnv("VITE_TCG_REFERENCE_MODE", "static");
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const options = {
+      signal: new AbortController().signal,
+      onProgress: vi.fn(),
+      onDownloadProgress: vi.fn(),
+    };
+    expect(usesStaticDatabaseInstall()).toBe(true);
+    await expect(installPokemonDatabase(options)).resolves.toBe(metadata);
+    expect(installStaticPokemonDatabase).toHaveBeenCalledExactlyOnceWith(
+      options,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    expect(importer).not.toHaveBeenCalled();
+  });
+  it("does not fall back to the relay after a static integrity failure", async () => {
+    vi.stubEnv("VITE_TCG_REFERENCE_MODE", "static");
+    const failure = new Error("static SHA mismatch"),
+      fetch = vi.fn();
+    vi.mocked(installStaticPokemonDatabase).mockRejectedValue(failure);
+    vi.stubGlobal("fetch", fetch);
+    await expect(installPokemonDatabase()).rejects.toBe(failure);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(importer).not.toHaveBeenCalled();
+  });
+  it("rejects unknown mode before networking or storage changes", async () => {
+    vi.stubEnv("VITE_TCG_REFERENCE_MODE", "remote");
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(installPokemonDatabase()).rejects.toMatchObject({
+      code: "unavailable",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(installStaticPokemonDatabase).not.toHaveBeenCalled();
+    expect(listLearnedPacks).not.toHaveBeenCalled();
+  });
+  it("honors already-cancelled installation before loading a transport", async () => {
+    vi.stubEnv("VITE_TCG_REFERENCE_MODE", "static");
+    await expect(
+      installPokemonDatabase({ signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ code: "aborted" });
+    expect(installStaticPokemonDatabase).not.toHaveBeenCalled();
   });
 });

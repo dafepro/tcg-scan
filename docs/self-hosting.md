@@ -44,10 +44,29 @@ The browser reads bounded ranges from the checked cache and validates the ZIP,
 manifest and individual reference hashes while importing. Cancellation does not
 make a partial database ready for scanning.
 
-**Static hosting:** GitHub release assets do not provide browser-readable CORS in
-the verified route. Hosting only `dist/` does not provide the installer endpoint.
-Use a corresponding same-origin backend or download the complete release ZIP and
-select it through **Use a downloaded reference ZIP**. Do not add a public CORS proxy
+**Static hosting with matching data:** build with
+`VITE_TCG_REFERENCE_MODE=static npm run build`. Place the reviewed, unchanged
+`manifest.learned.json` and its 154 binary shards under
+`dist/reference-data/pokemon-en-learned-2026-10-12/`. The same install button then
+reads only these fixed same-origin files, verifies the pinned manifest before
+requesting shards, and installs sequentially with bounded buffers. No backend or
+GitHub CORS is required. The manifest is 8,394,772 bytes; the largest shard is
+2,490,400 bytes. The complete decoded payload is 391,001,940 bytes. Preserve
+binary content and serve JSON/binary MIME types, not SPA fallback HTML. Ordinary
+HTTP compression is supported, while decoded length and hashes remain exact.
+Cancellation rolls back incomplete browser storage; retry restarts the static
+file download. It does not claim the local server's resumable ZIP cache.
+
+The build mode is explicit: unset/`local` uses the local relay, `static` uses the
+fixed static files, and other values fail closed. A static hash/transport failure
+never silently falls back to another host. Hosting only the default `dist/`
+without matching reference files does not make the database available.
+
+**ZIP fallback:** GitHub release assets do not provide browser-readable CORS in
+the verified route. On a host without either installation method, download the
+complete release ZIP and select it through **Use a downloaded reference ZIP**. Do not add a public CORS proxy
 or put GitHub credentials in browser code. Preserve provider/model notices if you
 redistribute reference data. The source software's MIT license does not relicense
 underlying Pokémon artwork or assert blanket rights in derived data.
+
+See [static deployment](static-deployment.md) for the reviewed local packaging path and the intended public app destination.

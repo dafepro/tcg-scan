@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
+  ChevronRight,
   Download,
   FolderOpen,
   Pause,
@@ -43,7 +44,10 @@ import type {
   LearnedPackMetadata,
 } from "../lib/learned-packs";
 import { importLearnedArchive } from "../lib/learned-archive";
-import { installPokemonDatabase } from "../lib/database-install";
+import {
+  installPokemonDatabase,
+  usesStaticDatabaseInstall,
+} from "../lib/database-install";
 import {
   POKEMON_REFERENCE_RELEASE,
   type PokemonReferenceDownloadStatus,
@@ -69,9 +73,16 @@ import { captureClock, LiveCaptureLoop } from "../lib/live-capture";
 import type { LiveCaptureContext } from "../lib/live-capture";
 import type { ScanContinuityPolicy } from "../lib/scan-session";
 import "./continuous-scanner.css";
+import type { AppPreferences } from "../lib/app-preferences";
+import { diagnostics } from "../lib/diagnostics";
+import type { ScannerLifecycle } from "../lib/scanner-lifecycle";
 
 type Props = {
   game: Game;
+  preferences: AppPreferences;
+  onSessionState?(state: ScannerLifecycle): void;
+  onFindCard?(): void;
+  onPreferencesChange(patch: Partial<AppPreferences>): void;
   onSave: (reference: ReferenceMetadata, eventId: string) => string | undefined;
   onUndo: (eventId: string) => string | undefined;
   onPrinting: (
@@ -112,6 +123,10 @@ export default function ContinuousScanner({
   onSave,
   onUndo,
   onPrinting,
+  preferences,
+  onPreferencesChange,
+  onSessionState,
+  onFindCard,
 }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const frameCapture = useRef<FrameCapture | null>(null);
@@ -123,20 +138,23 @@ export default function ContinuousScanner({
   const frameEpoch = useRef(0);
   const running = useRef(false);
   const pausedRef = useRef(false);
-  const autoRef = useRef(true);
+  const autoRef = useRef(preferences.autoSave);
   const session = useRef<ScanSession | null>(null);
   const printing = useRef<PrintingSession | null>(null);
   const printedEvents = useRef(new Set<string>());
   const captureSequence = useRef(0);
+  const newSessionPending = useRef(false);
   const callbacks = useRef({ onSave, onUndo, onPrinting });
   useEffect(() => {
     callbacks.current = { onSave, onUndo, onPrinting };
   }, [onSave, onUndo, onPrinting]);
-  const [mode, setMode] = useState<ScanMode>("stream");
-  const [savePolicy, setSavePolicy] = useState<ScanContinuityPolicy>("fast");
+  const [mode, setMode] = useState<ScanMode>(preferences.liveMode);
+  const [savePolicy, setSavePolicy] = useState<ScanContinuityPolicy>(
+    preferences.savePolicy,
+  );
   const [active, setActive] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [auto, setAuto] = useState(true);
+  const [auto, setAuto] = useState(preferences.autoSave);
   const [busy, setBusy] = useState(false);
   const [photoPreparing, setPhotoPreparing] = useState(false);
   const [cameraPreparing, setCameraPreparing] = useState(false);
@@ -246,14 +264,7 @@ export default function ContinuousScanner({
     setPaused(true);
     setMessage("Paused. Existing tracks remain counted.");
   }, [cancelPrintingStatus]);
-  useEffect(() => {
-    const hide = () => {
-      if (document.hidden && running.current) pause();
-    };
-    document.addEventListener("visibilitychange", hide);
-    return () => document.removeEventListener("visibilitychange", hide);
-  }, [pause]);
-  function stop() {
+  const stop = useCallback(() => {
     liveCapture.current?.dispose();
     liveCapture.current = null;
     cancelPrintingStatus();
@@ -271,14 +282,29 @@ export default function ContinuousScanner({
     frameCapture.current?.dispose();
     frameCapture.current = null;
     session.current?.releasePixels();
-    setTracks(session.current?.snapshot() ?? []);
+    if (!newSessionPending.current)
+      setTracks(session.current?.snapshot() ?? []);
+    newSessionPending.current = false;
     setActive(false);
     setPaused(false);
     setBusy(false);
     setPhotoPreparing(false);
     setCameraPreparing(false);
     setMessage("Camera stopped. Start a new session to scan again.");
-  }
+  }, [cancelPrintingStatus]);
+  useEffect(() => {
+    const hide = () => {
+      if (!document.hidden) return;
+      if (newSessionPending.current) {
+        stop();
+        setMessage(
+          "Preparation cancelled while this tab was hidden. Your previous session is kept.",
+        );
+      } else if (running.current) pause();
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, [pause, stop]);
   async function prepare(gen: number) {
     if (gen !== generation.current) throw new Error("Session cancelled.");
     const local = new VisionClient();
@@ -757,34 +783,19 @@ export default function ContinuousScanner({
   }
   async function start() {
     if (busy || active || !packsReady || !installedCount) return;
+    newSessionPending.current = true;
+    diagnostics.reset("live");
+    setTimings(undefined);
     setCameraPreparing(true);
     setMessage(
       "Waiting for camera access. You can cancel preparation at any time.",
     );
     setBusy(true);
     setError("");
-    setPhoto(undefined);
-    setPhotoMatches([]);
-    setTracks([]);
-    setSaved([]);
-    receiptEvents.current.clear();
-    setSessionCount(0);
-    setShowUnmatched(false);
-    setMediaSize({ width: 1280, height: 720 });
     frameCapture.current?.dispose();
     frameCapture.current = null;
     setCaptureTransport("videoframe-pool");
-    printedEvents.current.clear();
     const gen = ++generation.current;
-    // A detector miss, glare, or unknown front is not evidence that a counted
-    // physical card left. Keep the camera latch until an explicit new copy/page.
-    session.current = new ScanSession(
-      crypto.randomUUID(),
-      mode,
-      1200,
-      "explicit",
-    );
-    preparePrinting(gen);
     let openingCamera = true;
     try {
       if (!window.isSecureContext)
@@ -840,6 +851,24 @@ export default function ContinuousScanner({
       openingCamera = false;
       const local = await prepare(gen);
       if (gen !== generation.current) return;
+      // Commit a new session only after permission, playback and model readiness.
+      // Cancelled/failed preparation leaves the previous subtotal and receipts intact.
+      session.current = new ScanSession(
+        crypto.randomUUID(),
+        mode,
+        1200,
+        "explicit",
+      );
+      setPhoto(undefined);
+      setPhotoMatches([]);
+      setTracks([]);
+      setSaved([]);
+      receiptEvents.current.clear();
+      setSessionCount(0);
+      setShowUnmatched(false);
+      printedEvents.current.clear();
+      preparePrinting(gen);
+      newSessionPending.current = false;
       setBusy(false);
       setCameraPreparing(false);
       setMessage(
@@ -973,7 +1002,9 @@ export default function ContinuousScanner({
             progress.state === "verifying"
               ? "Checking the downloaded database integrity…"
               : progress.state === "ready"
-                ? "Download checked. Installing references in this browser…"
+                ? usesStaticDatabaseInstall()
+                  ? "Pokémon database installed in this browser."
+                  : "Download checked. Installing references in this browser…"
                 : `Downloading Pokémon references: ${(progress.downloadedBytes / 1_000_000).toFixed(1)} / ${(progress.totalBytes / 1_000_000).toFixed(1)} MB`,
           );
         },
@@ -990,7 +1021,9 @@ export default function ContinuousScanner({
     } catch (e) {
       if (gen !== generation.current) return;
       const feedback = controller.signal.aborted
-        ? "Installation cancelled. The app server keeps the download progress. Choose Install Pokémon database to continue."
+        ? usesStaticDatabaseInstall()
+          ? "Installation cancelled. No partial database is ready for scanning. Choose Install Pokémon database to restart the download."
+          : "Installation cancelled. The app server keeps the download progress. Choose Install Pokémon database to continue."
         : errorMessage(e);
       setImportFeedback(feedback);
       if (!controller.signal.aborted) setError(feedback);
@@ -1020,6 +1053,8 @@ export default function ContinuousScanner({
     stop();
     setBusy(true);
     setPhotoPreparing(true);
+    diagnostics.reset("live");
+    setTimings(undefined);
     setShowUnmatched(false);
     setError("");
     setPhotoMatches([]);
@@ -1220,6 +1255,389 @@ export default function ContinuousScanner({
     : 0;
   const recentSaved = saved.find((item) => !item.undone);
   const uploadDisabled = busy || active || !packsReady || !installedCount;
+  useEffect(() => {
+    diagnostics.update("live", {
+      game,
+      mode: photo ? "photo" : mode,
+      matcher,
+      savePolicy,
+      active,
+      paused,
+      autoSave: auto,
+      busy,
+      references: installedCount,
+      matcherReferences: coverage.byGame[game],
+      tracks: tracks.filter((track) => track.visible).length,
+      verified: tracks.filter(
+        (track) => track.visible && track.evidence?.autoEligible,
+      ).length,
+      saved: sessionCount,
+      status: error
+        ? "failed"
+        : busy
+          ? "preparing"
+          : paused
+            ? "paused"
+            : active
+              ? "running"
+              : "idle",
+      ...(timings
+        ? {
+            width: size.width,
+            height: size.height,
+            detectionMs: timings.detectionMs,
+            extractionMs: timings.extractionMs,
+            matchingMs: timings.matchingMs,
+            totalMs: timings.totalMs,
+          }
+        : {}),
+    });
+  }, [
+    game,
+    mode,
+    photo,
+    matcher,
+    savePolicy,
+    active,
+    paused,
+    auto,
+    busy,
+    installedCount,
+    coverage,
+    tracks,
+    sessionCount,
+    size,
+    error,
+    timings,
+  ]);
+  useEffect(() => {
+    diagnostics.record(
+      "live",
+      error ? "error" : paused ? "pause" : active ? "start" : "stop",
+      {
+        status: error
+          ? "failed"
+          : paused
+            ? "paused"
+            : active
+              ? "running"
+              : "stopped",
+        ...(error ? { reason: "scan-failed" as const } : {}),
+      },
+    );
+  }, [active, paused, error]);
+  useEffect(() => {
+    onSessionState?.({
+      phase: busy
+        ? "preparing"
+        : paused
+          ? "paused"
+          : active
+            ? "active"
+            : photoMatches.length
+              ? "review"
+              : session.current || sessionCount
+                ? "ended"
+                : "idle",
+      sessionId: session.current?.id ?? null,
+      savedCount: sessionCount,
+    });
+  }, [active, paused, busy, sessionCount, photoMatches.length, onSessionState]);
+  useEffect(() => () => diagnostics.reset("live"), []);
+
+  const databasePanel = (
+    <div
+      className={`scanner-setup ${needsSetup ? "needs-setup" : ""} ${packPanelOpen ? "expanded" : ""}`}
+    >
+      <strong>
+        {!packsReady
+          ? "Checking installed references…"
+          : needsSetup
+            ? `Set up ${gameName} recognition`
+            : `Ready · ${gameName}`}
+      </strong>
+      {needsSetup ? (
+        <p>
+          Install a reference pack once before scanning. Recognition is limited
+          to the cards in your installed packs.
+        </p>
+      ) : installedCount > 0 ? (
+        <ul className="coverage-summary">
+          {learnedCount
+            ? readyLearned.map((pack) => (
+                <li key={pack.id}>
+                  {pack.name} · {pack.byGame[game].toLocaleString()} references
+                  · {pack.byGameNames[game].toLocaleString()} card names
+                  <span>
+                    {pack.coverage.scope === "full-catalog"
+                      ? "Full-catalog source"
+                      : "Partial reference coverage"}{" "}
+                    · {pack.coverage.missingImages.toLocaleString()} missing
+                    images · {pack.coverage.failedImages.toLocaleString()}{" "}
+                    extraction failures
+                  </span>
+                </li>
+              ))
+            : readyLegacy.map((pack) => (
+                <li key={pack.id}>
+                  {pack.name} · {pack.byGame[game].toLocaleString()} references
+                  <span>
+                    {pack.coverage?.scope === "full-catalog"
+                      ? "Full-catalog source"
+                      : "Partial reference coverage"}
+                    {pack.coverage?.shard
+                      ? ` · shard ${pack.coverage.shard.index}/${pack.coverage.shard.total}`
+                      : ""}
+                    . Only installed images can match.
+                  </span>
+                </li>
+              ))}
+        </ul>
+      ) : null}
+      {needsSetup ? (
+        <p className="pack-help">
+          0 installed references for {gameName}. Install a pack below.
+        </p>
+      ) : (
+        <button
+          className="pack-toggle"
+          aria-expanded={packPanelOpen}
+          aria-controls="scanner-pack-manager"
+          onClick={() => {
+            setPackOpen(!packOpen);
+            if (!packOpen) void refreshPacks(true);
+          }}
+        >
+          <FolderOpen size={16} />
+          {installedCount.toLocaleString()} installed references · manage
+          offline packs
+        </button>
+      )}
+      {packPanelOpen && (
+        <div className="pack-manager" id="scanner-pack-manager">
+          {game === "pokemon" && (
+            <div className="database-install">
+              <button
+                className="button primary"
+                disabled={
+                  active ||
+                  busy ||
+                  officialDatabaseReady ||
+                  !POKEMON_REFERENCE_RELEASE.url
+                }
+                onClick={() => void installDatabase()}
+              >
+                <Download size={16} />
+                {officialDatabaseReady
+                  ? "Pokémon database installed"
+                  : "Install Pokémon database"}
+              </button>
+              <p className="pack-help">
+                {usesStaticDatabaseInstall() ? "Up to" : "One-time"}{" "}
+                {(
+                  (usesStaticDatabaseInstall()
+                    ? POKEMON_REFERENCE_RELEASE.referenceBytes
+                    : POKEMON_REFERENCE_RELEASE.sizeBytes) / 1_000_000
+                ).toFixed(0)}{" "}
+                MB download ·{" "}
+                {POKEMON_REFERENCE_RELEASE.referenceCount.toLocaleString()}{" "}
+                English paper-card references. The app handles every file for
+                you.
+              </p>
+            </div>
+          )}
+          <details className="pack-compatibility">
+            <summary>Use a downloaded reference ZIP</summary>
+            <label className="button subtle" aria-disabled={active || busy}>
+              <Upload size={16} />
+              Install database from ZIP
+              <input
+                className="sr-only"
+                type="file"
+                accept="application/zip,.zip"
+                disabled={active || busy}
+                onChange={(e) => {
+                  void importLearnedFiles(e.target.files, true);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p className="pack-help">
+              Choose one complete reference ZIP. The app checks and installs
+              everything locally; you don’t need to extract or manage its files.
+            </p>
+            {POKEMON_REFERENCE_RELEASE.url && game === "pokemon" && (
+              <a
+                href={POKEMON_REFERENCE_RELEASE.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Download the complete Pokémon reference ZIP
+              </a>
+            )}
+          </details>
+          <details className="pack-compatibility">
+            <summary>Advanced: individual reference files</summary>
+            <label className="button subtle" aria-disabled={active || busy}>
+              <Upload size={16} />
+              Install learned reference pack
+              <input
+                className="sr-only"
+                type="file"
+                accept="application/json,application/octet-stream,.json,.bin"
+                multiple
+                disabled={active || busy}
+                onChange={(e) => {
+                  void importLearnedFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <p>
+              Select one learned manifest and all its binary shards together.
+            </p>
+          </details>
+          <p className="pack-storage-help">
+            References stay in this browser after reload. Private browsing or
+            clearing site data can remove them. Reinstall the Pokémon database
+            here if needed; keep any custom reference ZIPs. Back up your
+            collection separately.
+          </p>
+          {(importing || importFeedback) && (
+            <div
+              className="pack-progress"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <span>{importFeedback}</span>
+              {importing && downloadProgress && !importProgress && (
+                <progress
+                  aria-label="Pokémon database download"
+                  max={downloadProgress.totalBytes}
+                  value={downloadProgress.downloadedBytes}
+                />
+              )}
+              {importing && importProgress && importProgress.total > 0 && (
+                <>
+                  <progress
+                    aria-label="Learned reference installation"
+                    max={importProgress.total}
+                    value={importProgress.completed}
+                  />
+                  <span>
+                    {importProgress.completed.toLocaleString()} /{" "}
+                    {importProgress.total.toLocaleString()} references
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+          {importing && (
+            <button
+              className="button subtle"
+              onClick={() => importController.current?.abort()}
+            >
+              Cancel installation
+            </button>
+          )}
+          {learnedPacks.map((pack) => (
+            <div key={pack.id} className="pack-row">
+              <span>
+                {pack.name} · {pack.cards.toLocaleString()} learned references ·{" "}
+                {(pack.bytes / 1048576).toFixed(1)} MB
+                <small>
+                  {pack.readiness}
+                  {pack.readiness !== "ready"
+                    ? " · unavailable for scanning; remove and retry installation"
+                    : ""}
+                  {pack.error ? ` · ${pack.error}` : ""}
+                </small>
+              </span>
+              <button
+                disabled={active || busy}
+                onClick={() =>
+                  void removeLearnedPack(pack.id)
+                    .then(() => refreshPacks(true))
+                    .catch((e) => setError(errorMessage(e)))
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <details className="pack-compatibility">
+            <summary>Compatibility import and other reference packs</summary>
+            <p>
+              Import compatible JSON feature packs if you don’t have a learned
+              pack. No full-game pack is bundled.
+            </p>
+            <label className="button subtle" aria-disabled={active || busy}>
+              <Upload size={16} />
+              Import feature packs
+              <input
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                multiple
+                disabled={active || busy}
+                onChange={(e) => {
+                  void importPacks(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {available
+              .filter((pack) => !pack.game || pack.game === game)
+              .map((pack) => (
+                <button
+                  key={pack.id}
+                  className="button subtle"
+                  disabled={active || busy}
+                  onClick={() => void install(pack)}
+                >
+                  <Download size={15} />
+                  {pack.name} · {pack.cards.toLocaleString()} references
+                </button>
+              ))}
+            {packs.map((pack) => (
+              <div key={pack.id} className="pack-row">
+                <span>
+                  {pack.name} · {pack.cards.toLocaleString()} references ·{" "}
+                  {(pack.bytes / 1048576).toFixed(1)} MB
+                  <small>
+                    {pack.coverage?.scope === "full-catalog"
+                      ? "Full-catalog source"
+                      : (pack.coverage?.scope ?? "custom coverage")}{" "}
+                    · {pack.readiness}
+                    {pack.coverage?.shard &&
+                      ` · shard ${pack.coverage.shard.index}/${pack.coverage.shard.total}`}
+                    {pack.coverage?.availableImages !== undefined &&
+                      ` · source has ${pack.coverage.availableImages.toLocaleString()} image references`}
+                    {pack.coverage &&
+                      ` · ${pack.coverage.missingImages} missing images, ${pack.coverage.failedImages} extraction failures`}
+                    {pack.error && ` · ${pack.error}`}
+                  </small>
+                </span>
+                <button
+                  disabled={active || busy}
+                  onClick={() =>
+                    void removeReferencePack(pack.id)
+                      .then(() => refreshPacks(true))
+                      .catch((e) => setError(errorMessage(e)))
+                  }
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </details>
+          <small>Stop the camera before changing reference packs.</small>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <section
       className="continuous-scanner panel"
@@ -1232,348 +1650,92 @@ export default function ContinuousScanner({
         </div>
         <ScanLine size={23} />
       </div>
-      <p className="section-description">
-        Hold until Added. Saved identities keep printing, finish and condition
-        unconfirmed.
-      </p>
       <p className="recognition-caution">
-        Experimental recognition · check saved counts.
+        Experimental · printing unconfirmed · check saved counts.
       </p>
-      <div className={`scanner-setup ${needsSetup ? "needs-setup" : ""}`}>
-        <strong>
-          {!packsReady
-            ? "Checking installed references…"
-            : needsSetup
-              ? `Set up ${gameName} recognition`
-              : `${installedCount.toLocaleString()} references ready for ${gameName}`}
-        </strong>
-        {needsSetup ? (
-          <p>
-            Install a reference pack once before scanning. Recognition is
-            limited to the cards in your installed packs.
-          </p>
-        ) : installedCount > 0 ? (
-          <ul className="coverage-summary">
-            {learnedCount
-              ? readyLearned.map((pack) => (
-                  <li key={pack.id}>
-                    {pack.name} · {pack.byGame[game].toLocaleString()}{" "}
-                    references · {pack.byGameNames[game].toLocaleString()} card
-                    names
-                    <span>
-                      {pack.coverage.scope === "full-catalog"
-                        ? "Full-catalog source"
-                        : "Partial reference coverage"}{" "}
-                      · {pack.coverage.missingImages.toLocaleString()} missing
-                      images · {pack.coverage.failedImages.toLocaleString()}{" "}
-                      extraction failures
-                    </span>
-                  </li>
-                ))
-              : readyLegacy.map((pack) => (
-                  <li key={pack.id}>
-                    {pack.name} · {pack.byGame[game].toLocaleString()}{" "}
-                    references
-                    <span>
-                      {pack.coverage?.scope === "full-catalog"
-                        ? "Full-catalog source"
-                        : "Partial reference coverage"}
-                      {pack.coverage?.shard
-                        ? ` · shard ${pack.coverage.shard.index}/${pack.coverage.shard.total}`
-                        : ""}
-                      . Only installed images can match.
-                    </span>
-                  </li>
-                ))}
-          </ul>
-        ) : null}
-        {needsSetup ? (
-          <p className="pack-help">
-            0 installed references for {gameName}. Install a pack below.
-          </p>
-        ) : (
-          <button
-            className="pack-toggle"
-            aria-expanded={packPanelOpen}
-            aria-controls="scanner-pack-manager"
-            onClick={() => {
-              setPackOpen(!packOpen);
-              if (!packOpen) void refreshPacks(true);
-            }}
-          >
-            <FolderOpen size={16} />
-            {installedCount.toLocaleString()} installed references · manage
-            offline packs
-          </button>
-        )}
-        {packPanelOpen && (
-          <div className="pack-manager" id="scanner-pack-manager">
-            {game === "pokemon" && (
-              <div className="database-install">
-                <button
-                  className="button primary"
-                  disabled={
-                    active ||
-                    busy ||
-                    officialDatabaseReady ||
-                    !POKEMON_REFERENCE_RELEASE.url
-                  }
-                  onClick={() => void installDatabase()}
-                >
-                  <Download size={16} />
-                  {officialDatabaseReady
-                    ? "Pokémon database installed"
-                    : "Install Pokémon database"}
-                </button>
-                <p className="pack-help">
-                  One-time{" "}
-                  {(POKEMON_REFERENCE_RELEASE.sizeBytes / 1_000_000).toFixed(0)}{" "}
-                  MB download ·{" "}
-                  {POKEMON_REFERENCE_RELEASE.referenceCount.toLocaleString()}{" "}
-                  English paper-card references. The app handles every file for
-                  you.
-                </p>
-              </div>
-            )}
-            <details className="pack-compatibility">
-              <summary>Use a downloaded reference ZIP</summary>
-              <label className="button subtle" aria-disabled={active || busy}>
-                <Upload size={16} />
-                Install database from ZIP
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="application/zip,.zip"
-                  disabled={active || busy}
-                  onChange={(e) => {
-                    void importLearnedFiles(e.target.files, true);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <p className="pack-help">
-                Choose one complete reference ZIP. The app checks and installs
-                everything locally; you don’t need to extract or manage its
-                files.
-              </p>
-              {POKEMON_REFERENCE_RELEASE.url && game === "pokemon" && (
-                <a
-                  href={POKEMON_REFERENCE_RELEASE.url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Download the complete Pokémon reference ZIP
-                </a>
-              )}
-            </details>
-            <details className="pack-compatibility">
-              <summary>Advanced: individual reference files</summary>
-              <label className="button subtle" aria-disabled={active || busy}>
-                <Upload size={16} />
-                Install learned reference pack
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="application/json,application/octet-stream,.json,.bin"
-                  multiple
-                  disabled={active || busy}
-                  onChange={(e) => {
-                    void importLearnedFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <p>
-                Select one learned manifest and all its binary shards together.
-              </p>
-            </details>
-            <p className="pack-storage-help">
-              References stay in this browser after reload. Private browsing or
-              clearing site data can remove them. Reinstall the Pokémon database
-              here if needed; keep any custom reference ZIPs. Back up your
-              collection separately.
-            </p>
-            {(importing || importFeedback) && (
-              <div
-                className="pack-progress"
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                <span>{importFeedback}</span>
-                {importing && downloadProgress && !importProgress && (
-                  <progress
-                    aria-label="Pokémon database download"
-                    max={downloadProgress.totalBytes}
-                    value={downloadProgress.downloadedBytes}
-                  />
-                )}
-                {importing && importProgress && importProgress.total > 0 && (
-                  <>
-                    <progress
-                      aria-label="Learned reference installation"
-                      max={importProgress.total}
-                      value={importProgress.completed}
-                    />
-                    <span>
-                      {importProgress.completed.toLocaleString()} /{" "}
-                      {importProgress.total.toLocaleString()} references
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-            {importing && (
-              <button
-                className="button subtle"
-                onClick={() => importController.current?.abort()}
-              >
-                Cancel installation
-              </button>
-            )}
-            {learnedPacks.map((pack) => (
-              <div key={pack.id} className="pack-row">
-                <span>
-                  {pack.name} · {pack.cards.toLocaleString()} learned references
-                  · {(pack.bytes / 1048576).toFixed(1)} MB
-                  <small>
-                    {pack.readiness}
-                    {pack.readiness !== "ready"
-                      ? " · unavailable for scanning; remove and retry installation"
-                      : ""}
-                    {pack.error ? ` · ${pack.error}` : ""}
-                  </small>
-                </span>
-                <button
-                  disabled={active || busy}
-                  onClick={() =>
-                    void removeLearnedPack(pack.id)
-                      .then(() => refreshPacks(true))
-                      .catch((e) => setError(errorMessage(e)))
-                  }
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            <details className="pack-compatibility">
-              <summary>Compatibility import and other reference packs</summary>
-              <p>
-                Import compatible JSON feature packs if you don’t have a learned
-                pack. No full-game pack is bundled.
-              </p>
-              <label className="button subtle" aria-disabled={active || busy}>
-                <Upload size={16} />
-                Import feature packs
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="application/json,.json"
-                  multiple
-                  disabled={active || busy}
-                  onChange={(e) => {
-                    void importPacks(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              {available
-                .filter((pack) => !pack.game || pack.game === game)
-                .map((pack) => (
-                  <button
-                    key={pack.id}
-                    className="button subtle"
-                    disabled={active || busy}
-                    onClick={() => void install(pack)}
-                  >
-                    <Download size={15} />
-                    {pack.name} · {pack.cards.toLocaleString()} references
-                  </button>
-                ))}
-              {packs.map((pack) => (
-                <div key={pack.id} className="pack-row">
-                  <span>
-                    {pack.name} · {pack.cards.toLocaleString()} references ·{" "}
-                    {(pack.bytes / 1048576).toFixed(1)} MB
-                    <small>
-                      {pack.coverage?.scope === "full-catalog"
-                        ? "Full-catalog source"
-                        : (pack.coverage?.scope ?? "custom coverage")}{" "}
-                      · {pack.readiness}
-                      {pack.coverage?.shard &&
-                        ` · shard ${pack.coverage.shard.index}/${pack.coverage.shard.total}`}
-                      {pack.coverage?.availableImages !== undefined &&
-                        ` · source has ${pack.coverage.availableImages.toLocaleString()} image references`}
-                      {pack.coverage &&
-                        ` · ${pack.coverage.missingImages} missing images, ${pack.coverage.failedImages} extraction failures`}
-                      {pack.error && ` · ${pack.error}`}
-                    </small>
-                  </span>
-                  <button
-                    disabled={active || busy}
-                    onClick={() =>
-                      void removeReferencePack(pack.id)
-                        .then(() => refreshPacks(true))
-                        .catch((e) => setError(errorMessage(e)))
-                    }
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </details>
-            <small>Stop the camera before changing reference packs.</small>
-          </div>
-        )}
-      </div>
-      <div className="live-controls">
-        <label>
-          Session mode
-          <select
-            value={mode}
-            disabled={active || busy}
-            onChange={(e) => setMode(e.target.value as ScanMode)}
-          >
-            <option value="stream">One card after another</option>
-            <option value="binder">Binder / tabletop · up to 9</option>
-          </select>
-        </label>
-        <label>
-          Save policy
-          <select
-            value={savePolicy}
-            disabled={active || busy}
-            onChange={(e) =>
-              setSavePolicy(e.target.value as ScanContinuityPolicy)
-            }
-          >
-            <option value="fast">Quick · strong match + current view</option>
-            <option value="strict">Strict · 3 matches + current view</option>
-          </select>
-        </label>
-        <label className="auto-toggle">
-          <input
-            type="checkbox"
-            checked={auto}
-            onChange={(e) => {
-              setAuto(e.target.checked);
-              autoRef.current = e.target.checked;
-              frameEpoch.current++;
-              session.current?.interruptEvidence();
-              liveCapture.current?.interrupt();
-              if (
-                activeMatcher.current !== "learned" &&
-                running.current &&
-                !pausedRef.current
-              ) {
-                if (timer.current) clearTimeout(timer.current);
-                void frame(generation.current, frameEpoch.current);
-              }
-            }}
+      {needsSetup ? (
+        databasePanel
+      ) : (
+        <p className="scanner-ready-chip">
+          {!packsReady ? "Checking card database…" : `Ready · ${gameName}`}
+        </p>
+      )}
+      <details className="scan-options">
+        <summary>
+          Scan options{" "}
+          <span>
+            {mode === "binder"
+              ? "Binder · separate visible copies"
+              : "One card at a time"}
+            {!auto ? " · preview only" : ""}
+          </span>
+          <ChevronRight
+            className="disclosure-arrow"
+            size={16}
+            aria-hidden="true"
           />
-          Auto-save strong matches
-        </label>
-      </div>
+        </summary>
+        <div className="live-controls">
+          <label>
+            Session mode
+            <select
+              value={mode}
+              disabled={active || busy}
+              onChange={(e) => {
+                const next = e.target.value as ScanMode;
+                setMode(next);
+                onPreferencesChange({ liveMode: next });
+              }}
+            >
+              <option value="stream">One card after another</option>
+              <option value="binder">Binder / tabletop · up to 9</option>
+            </select>
+          </label>
+          <label>
+            Save policy
+            <select
+              value={savePolicy}
+              disabled={active || busy}
+              onChange={(e) => {
+                const next = e.target.value as ScanContinuityPolicy;
+                setSavePolicy(next);
+                onPreferencesChange({ savePolicy: next });
+              }}
+            >
+              <option value="fast">Quick · strong match + current view</option>
+              <option value="strict">Strict · 3 matches + current view</option>
+            </select>
+          </label>
+          <label className="auto-toggle">
+            <input
+              type="checkbox"
+              checked={auto}
+              onChange={(e) => {
+                setAuto(e.target.checked);
+                onPreferencesChange({ autoSave: e.target.checked });
+                autoRef.current = e.target.checked;
+                frameEpoch.current++;
+                session.current?.interruptEvidence();
+                liveCapture.current?.interrupt();
+                if (
+                  activeMatcher.current !== "learned" &&
+                  running.current &&
+                  !pausedRef.current
+                ) {
+                  if (timer.current) clearTimeout(timer.current);
+                  void frame(generation.current, frameEpoch.current);
+                }
+              }}
+            />
+            Auto-save strong matches
+          </label>
+        </div>
+        {!needsSetup && databasePanel}
+        <p className="scanner-action-help">
+          Pause keeps this session. Ending and starting a new session resets its
+          count and may count the same cards again. Your collection is kept.
+        </p>
+      </details>
       <div className="scanner-camera-controls">
         <div className="live-actions">
           {cameraPreparing ? (
@@ -1596,7 +1758,9 @@ export default function ContinuousScanner({
             </>
           ) : !active ? (
             <button
-              className="button primary"
+              className={
+                photoMatches.length ? "button secondary" : "button primary"
+              }
               onClick={() => void start()}
               disabled={busy || !packsReady || !installedCount}
             >
@@ -1622,7 +1786,7 @@ export default function ContinuousScanner({
               </button>
               <button className="button subtle" onClick={stop}>
                 <Square size={15} />
-                Stop
+                End session
               </button>
               <button
                 className="button subtle"
@@ -1653,7 +1817,7 @@ export default function ContinuousScanner({
                   );
                 }}
               >
-                {mode === "binder" ? "New page" : "Next copy"}
+                {mode === "binder" ? "New page" : "Add another copy"}
               </button>
             </>
           )}
@@ -1699,10 +1863,16 @@ export default function ContinuousScanner({
             {mode === "binder"
               ? "New page lets every card in the current view count again. Use it only after changing the page or layout."
               : nextCopyTarget
-                ? `Next copy: ${nextCopyTarget.reference!.name}. Replace it with the next physical copy, then tap.`
+                ? `Add another copy: ${nextCopyTarget.reference!.name}. Replace it with the next physical copy, then tap.`
                 : visibleSettled.length > 1
-                  ? "Next copy is unavailable while several counted cards are visible. Show only the card you want to count again."
-                  : "Next copy becomes available when one counted card is visible. Hold it in view until identified."}
+                  ? "Show only the card you want to count again before adding another copy."
+                  : "To add another identical copy, show one counted card until identified, then choose Add another copy."}
+          </p>
+        )}
+        {!active && sessionCount > 0 && (
+          <p className="scanner-action-help">
+            Starting again begins a new session and may count the same cards
+            again. Your saved collection stays.
           </p>
         )}
         {!auto && (
@@ -1763,7 +1933,7 @@ export default function ContinuousScanner({
               </span>
             </div>
           )}
-          {(active || photo) && (
+          {!cameraPreparing && (active || photo) && (
             <svg
               className="live-overlay"
               viewBox={`0 0 ${size.width} ${size.height}`}
@@ -1781,7 +1951,8 @@ export default function ContinuousScanner({
               ))}
             </svg>
           )}
-          {(active || photo) &&
+          {!cameraPreparing &&
+            (active || photo) &&
             shownTracks.map((track) => {
               const x = Math.min(...track.quad.map((point) => point.x));
               const y = Math.min(...track.quad.map((point) => point.y));
@@ -1814,6 +1985,11 @@ export default function ContinuousScanner({
         </div>
       </div>
       <p className="live-status">{message}</p>
+      {onFindCard && (needsSetup || error || unmatchedCount > 0) && (
+        <button className="button subtle" onClick={onFindCard}>
+          Find a card manually <ChevronRight size={15} />
+        </button>
+      )}
       {photo && unmatchedCount > 0 && (
         <div className="photo-unmatched">
           <span>
@@ -1836,7 +2012,10 @@ export default function ContinuousScanner({
           {shownTracks.map((track) => {
             const presentation = scannerTrackPresentation(track, !!photo, auto);
             return (
-              <li key={track.id}>
+              <li
+                key={track.id}
+                className={`track-status-row track-${track.status}`}
+              >
                 <span className={`track-status-number track-${track.status}`}>
                   {trackNumber(track)} {statusGlyph(track.status)}
                 </span>
@@ -1844,7 +2023,9 @@ export default function ContinuousScanner({
                   <strong>
                     {presentation.name} · {presentation.label}
                   </strong>
-                  <span>{presentation.message}</span>
+                  <span className="track-detail-message">
+                    {presentation.message}
+                  </span>
                 </div>
               </li>
             );
@@ -1870,35 +2051,20 @@ export default function ContinuousScanner({
         </p>
       )}
       <details className="scanner-details">
-        <summary>Scanning tips and diagnostics</summary>
+        <summary>Scanning tips and recognition limits</summary>
         <p className="recognition-caution">
           Experimental recognition · check saved counts. Physical-card accuracy
           is still being validated; only installed references can match.
         </p>
         <p className="live-rule">
           {mode === "stream"
-            ? "Different card identities save automatically when auto-save is on. An identical card stays counted across gaps, blur and re-entry. Next copy rearms only the named identity. Automatic identical-copy exit/re-entry is not verified. Undo accidental repeats."
+            ? "Different card identities save automatically when auto-save is on. An identical card stays counted across gaps, blur and re-entry. Add another copy rearms only the named identity. Automatic identical-copy exit/re-entry is not verified. Undo accidental repeats."
             : "Keep one page or layout in view. Brief gaps do not reset counted cards. New page allows visible cards to count again."}{" "}
           Show all four edges with background around them; separate overlapping
           cards. Printed identifiers are checked when a close-up has enough
           native detail. Edition, finish and physical condition can remain
           unconfirmed.
         </p>
-        <div className="live-metrics">
-          <span>
-            {coverage.byGame[game].toLocaleString()} loaded references
-          </span>
-          <span>
-            {matcher === "learned"
-              ? "Learned matcher · local feature cache"
-              : "Compatibility matcher · ORB"}
-          </span>
-          <span>
-            {timings
-              ? `${Math.round(timings.totalMs)} ms processing only · ${Math.round(timings.matchingMs)} ms matching. Excludes camera preparation, current-view checks and saving.`
-              : "Processing timing appears after an analyzed frame."}
-          </span>
-        </div>
       </details>
       {saved.length > 0 && (
         <div className="scan-receipts">

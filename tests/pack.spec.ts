@@ -1,3 +1,4 @@
+import { confirmSessionSwitch } from "./fixtures/disclosures";
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { originalInstallerArchive } from "./fixtures/installer-archive";
@@ -279,6 +280,44 @@ async function deferredResume(page: Page) {
   await expect.poll(async () => (await metrics(page)).pendingPlays).toBe(1);
 }
 
+async function openTerminalDiagnostics(page: Page) {
+  await page
+    .getByRole("button", { name: "Options & debug", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Live diagnostics", exact: true })
+    .click();
+}
+
+async function terminalDiagnostics(page: Page, processed: number) {
+  // Open the panel before the terminal action, then read the final snapshot
+  // once, without adding a second wait or UI interaction for the 250ms timer.
+  const values = await page
+    .getByRole("region", { name: "pack diagnostics", exact: true })
+    .evaluate((region) =>
+      Object.fromEntries(
+        [...region.querySelectorAll(".debug-fields > div")].map((row) => [
+          row.querySelector("dt")?.textContent,
+          row.querySelector("dd")?.textContent,
+        ]),
+      ),
+    );
+  expect(values).toMatchObject({
+    Pending: "0",
+    Queue: "0",
+    Bytes: "0",
+    "Camera active": "No",
+    State: "stopped",
+  });
+  expect(Number(values.Processed?.replaceAll(",", ""))).toBe(processed);
+  expect(Number(values.Captured?.replaceAll(",", ""))).toBeGreaterThanOrEqual(
+    Math.max(1, processed),
+  );
+  await page
+    .getByRole("button", { name: "Close options and debug", exact: true })
+    .click();
+}
+
 test("pack natural end drains real captured frames and saves one durable identity", async ({
   page,
 }) => {
@@ -289,10 +328,12 @@ test("pack natural end drains real captured frames and saves one durable identit
     { timeout: 10_000 },
   );
   expect(await collection(page)).toHaveLength(0);
+  await openTerminalDiagnostics(page);
   await releaseResults(page);
   await expect(scan(page)).toContainText("Captured views processed");
+  await terminalDiagnostics(page, (await metrics(page)).analyses);
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "1 saved",
+    "1 saved this session",
   );
   expect((await metrics(page)).transferredBytes).toBeGreaterThan(0);
   expect((await metrics(page)).analyses).toBeGreaterThan(1);
@@ -325,7 +366,7 @@ for (const visibility of ["hidden", "hide-then-show"] as const) {
       scan(page).getByRole("button", { name: "Resume pack" }),
     ).toBeVisible();
     await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-      "0 saved",
+      "0 saved this session",
     );
     expect(await collection(page)).toHaveLength(0);
     await page.evaluate(() =>
@@ -333,9 +374,11 @@ for (const visibility of ["hidden", "hide-then-show"] as const) {
     );
     await scan(page).getByRole("button", { name: "Resume pack" }).click();
     await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-      "1 saved",
+      "1 saved this session",
     );
-    await scan(page).getByRole("button", { name: "Stop pack" }).click();
+    await scan(page)
+      .getByRole("button", { name: "End session", exact: true })
+      .click();
   });
 }
 
@@ -345,7 +388,9 @@ test("Stop cancels a deferred pack Resume and late worker completion", async ({
   await prepare(page);
   await startVideo(page);
   await deferredResume(page);
-  await scan(page).getByRole("button", { name: "Stop pack" }).click();
+  await scan(page)
+    .getByRole("button", { name: "End session", exact: true })
+    .click();
   await page.evaluate(() => {
     const state = (window as unknown as FixtureWindow).packFixture;
     state.releasePlay();
@@ -369,7 +414,9 @@ test("an old deferred Resume cannot resume or save into a replacement pack", asy
   await prepare(page);
   await startVideo(page);
   await deferredResume(page);
-  await scan(page).getByRole("button", { name: "Stop pack" }).click();
+  await scan(page)
+    .getByRole("button", { name: "End session", exact: true })
+    .click();
   await startVideo(page, 2);
   await scan(page).getByRole("button", { name: "Pause pack" }).click();
   await page.evaluate(() => {
@@ -382,16 +429,18 @@ test("an old deferred Resume cannot resume or save into a replacement pack", asy
     scan(page).getByRole("button", { name: "Resume pack" }),
   ).toBeVisible();
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "0 saved",
+    "0 saved this session",
   );
   await expect(scan(page).locator(".pack-error")).toHaveCount(0);
   expect(await collection(page)).toHaveLength(0);
   await scan(page).getByRole("button", { name: "Resume pack" }).click();
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "1 saved",
+    "1 saved this session",
   );
   expect(await collection(page)).toHaveLength(1);
-  await scan(page).getByRole("button", { name: "Stop pack" }).click();
+  await scan(page)
+    .getByRole("button", { name: "End session", exact: true })
+    .click();
 });
 
 test("a failed pack save retries its same durable event after drain and Undo survives reload", async ({
@@ -401,7 +450,7 @@ test("a failed pack save retries its same durable event after drain and Undo sur
   await startVideo(page);
   await expect(scan(page)).toContainText("Scan was not saved");
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "0 saved",
+    "0 saved this session",
   );
   expect(await collection(page)).toHaveLength(0);
   const failedId = (await metrics(page)).attemptedEventIds[0];
@@ -414,7 +463,7 @@ test("a failed pack save retries its same durable event after drain and Undo sur
   });
   await scan(page).getByRole("button", { name: "Retry save" }).click();
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "1 saved",
+    "1 saved this session",
   );
   expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
     failedId,
@@ -423,7 +472,9 @@ test("a failed pack save retries its same durable event after drain and Undo sur
     new Set([failedId]),
   );
   await expect(scan(page).locator(".pack-error")).toHaveCount(0);
-  await scan(page).getByRole("button", { name: "Undo card" }).click();
+  await scan(page)
+    .getByRole("button", { name: "Undo latest copy", exact: true })
+    .click();
   await expect(scan(page).locator(".receipt-state.undone")).toHaveText(
     "Undone",
   );
@@ -441,13 +492,18 @@ test("explicit Stop cancels a draining queue instead of saving its late result",
   await expect(scan(page).locator(".pack-preview-state")).toContainText(
     "Processing captured views",
   );
-  await scan(page).getByRole("button", { name: "Stop pack" }).click();
+  await openTerminalDiagnostics(page);
+  // The debug panel is nonmodal; the session control remains keyboard usable.
+  await scan(page)
+    .getByRole("button", { name: "End session", exact: true })
+    .press("Enter");
+  await terminalDiagnostics(page, 0);
   await releaseResults(page);
   await expect(scan(page).locator(".pack-capture-status")).toContainText(
     "0 queued · 0 identifying",
   );
   await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
-    "0 saved",
+    "0 saved this session",
   );
   expect(await collection(page)).toHaveLength(0);
   await expect(
@@ -463,10 +519,254 @@ test("changing workflows cancels pack pixels and rejects the previous worker cal
   await page
     .getByRole("button", { name: "Live cards / binder", exact: true })
     .click();
+  const dialog = page.getByRole("dialog", {
+    name: "End this scanning session and switch?",
+  });
+  await expect(dialog).toBeVisible();
+  expect((await metrics(page)).terminated).toBe(0);
+  await dialog.getByRole("button", { name: "Stay here", exact: true }).click();
+  await expect(scan(page)).toBeVisible();
+  expect((await metrics(page)).terminated).toBe(0);
+  await page
+    .getByRole("button", { name: "Live cards / binder", exact: true })
+    .click();
+  await confirmSessionSwitch(page);
   await releaseResults(page);
   expect(await collection(page)).toHaveLength(0);
   expect((await metrics(page)).terminated).toBe(1);
   await expect(
     page.getByRole("region", { name: "Continuous card scanner" }),
   ).toBeVisible();
+});
+
+async function savedPack(page: Page) {
+  await prepare(page, { holdResults: false });
+  await startVideo(page);
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  await scan(page)
+    .getByRole("button", { name: "Finish capture", exact: true })
+    .click();
+  await expect(scan(page)).toContainText("Captured views processed");
+  expect(await collection(page)).toHaveLength(1);
+}
+
+test("Pack explicit copies use separate durable events and Undo reverses only the latest copy", async ({
+  page,
+}) => {
+  await savedPack(page);
+  const original = (await collection(page))[0].scanEventId;
+  await scan(page)
+    .getByRole("button", {
+      name: "Add another copy of Synthetic pack lifecycle card",
+      exact: true,
+    })
+    .click();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "2 saved this session",
+  );
+  const two = await collection(page);
+  expect(two).toHaveLength(2);
+  expect(
+    two.every(
+      (entry) => entry.quantity === 1 && entry.verification === "identity-only",
+    ),
+  ).toBe(true);
+  const firstExtra = two.find(
+    (entry) => entry.scanEventId !== original,
+  )!.scanEventId;
+  expect(firstExtra).toBeTruthy();
+  await expect(
+    scan(page).locator('.pack-receipt[data-status="saved"]'),
+  ).toHaveCount(1);
+  await expect(
+    scan(page).locator('.pack-receipt[data-status="saved"] .session-quantity'),
+  ).toHaveText("× 2");
+  await expect(
+    scan(page).locator('.pack-receipt[data-status="saved"]'),
+  ).toHaveAttribute("data-quantity-origin", "user-confirmed");
+  await scan(page)
+    .getByRole("button", { name: "Undo latest copy", exact: true })
+    .click();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    original,
+  ]);
+  await releaseResults(page); // A late repeat cannot restore the undone copy.
+  expect(await collection(page)).toHaveLength(1);
+  await scan(page)
+    .getByRole("button", {
+      name: "Add another copy of Synthetic pack lifecycle card",
+      exact: true,
+    })
+    .click();
+  const next = await collection(page),
+    secondExtra = next.find(
+      (entry) => entry.scanEventId !== original,
+    )!.scanEventId;
+  expect(next).toHaveLength(2);
+  expect(secondExtra).not.toBe(firstExtra);
+  await page.reload();
+  expect(
+    (await collection(page)).map((entry) => entry.scanEventId).sort(),
+  ).toEqual([original, secondExtra].sort());
+});
+
+test("a failed explicit copy retries one event without rearming repeated frames", async ({
+  page,
+}) => {
+  await savedPack(page);
+  const original = (await collection(page))[0].scanEventId;
+  await page.evaluate(() => {
+    (window as unknown as FixtureWindow).packFixture.storageFailure = true;
+  });
+  await scan(page)
+    .getByRole("button", {
+      name: "Add another copy of Synthetic pack lifecycle card",
+      exact: true,
+    })
+    .click();
+  await expect(
+    scan(page).locator('.pack-receipt[data-status="error"]'),
+  ).toContainText("Scan was not saved");
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    original,
+  ]);
+  const failed = [...new Set((await metrics(page)).attemptedEventIds)].filter(
+    (id) => id !== original,
+  );
+  expect(failed).toHaveLength(1);
+  await page.evaluate(() => {
+    (window as unknown as FixtureWindow).packFixture.storageFailure = false;
+  });
+  await scan(page)
+    .getByRole("button", { name: "Retry save", exact: true })
+    .click();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "2 saved this session",
+  );
+  expect(
+    (await collection(page)).map((entry) => entry.scanEventId).sort(),
+  ).toEqual([original, failed[0]].sort());
+  // One failed write, then the durable commit and the existing React
+  // persistence effect write the same successful snapshot. These are writes,
+  // not quantity increments; the exact two-event collection is asserted above.
+  expect(
+    (await metrics(page)).attemptedEventIds.filter((id) => id === failed[0]),
+  ).toHaveLength(3);
+  await releaseResults(page);
+  expect(await collection(page)).toHaveLength(2);
+  await scan(page)
+    .getByRole("button", { name: "Undo latest copy", exact: true })
+    .click();
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    original,
+  ]);
+});
+
+test("invalid replacement video preserves the completed Pack subtotal and receipts", async ({
+  page,
+}) => {
+  await savedPack(page);
+  const before = await collection(page);
+  await scan(page)
+    .locator('input[type="file"]')
+    .setInputFiles({
+      name: "invalid.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Original invalid fixture"),
+    });
+  await expect(scan(page).locator(".pack-error")).toContainText(
+    "Choose a nonempty MP4 or WebM",
+  );
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  await expect(
+    scan(page).locator('.pack-receipt[data-status="saved"]'),
+  ).toHaveCount(1);
+  expect(await collection(page)).toEqual(before);
+});
+
+test("denied Pack camera preparation preserves a completed video session", async ({
+  page,
+}) => {
+  await savedPack(page);
+  const before = await collection(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: async () => {
+        throw new DOMException(
+          "Synthetic pack restart denied",
+          "NotAllowedError",
+        );
+      },
+    });
+  });
+  await scan(page)
+    .getByRole("button", { name: "Start pack camera", exact: true })
+    .click();
+  await expect(scan(page).locator(".pack-error")).toBeVisible();
+  await expect(
+    scan(page).getByRole("button", { name: "Start pack camera", exact: true }),
+  ).toBeEnabled();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  expect(await collection(page)).toEqual(before);
+});
+
+test("detailed Pack receipts undo the selected copy rather than the latest copy", async ({
+  page,
+}) => {
+  await savedPack(page);
+  const original = (await collection(page))[0].scanEventId;
+  await scan(page)
+    .getByRole("button", {
+      name: "Add another copy of Synthetic pack lifecycle card",
+      exact: true,
+    })
+    .click();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "2 saved this session",
+  );
+  const child = (await collection(page)).find(
+    (entry) => entry.scanEventId !== original,
+  )!.scanEventId;
+  await scan(page)
+    .getByRole("button", { name: /Show recent captured-view details/ })
+    .click();
+  const originalRow = scan(page).locator(
+    '.pack-receipt[data-status="saved"][data-quantity-origin="captured"]',
+  );
+  await expect(originalRow).toHaveCount(1);
+  await originalRow
+    .getByRole("button", { name: "Undo this copy", exact: true })
+    .click();
+  await expect(scan(page).locator(".pack-capture-status strong")).toHaveText(
+    "1 saved this session",
+  );
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    child,
+  ]);
+  await expect(
+    scan(page).locator(
+      '.pack-receipt[data-status="saved"][data-quantity-origin="user-confirmed"]',
+    ),
+  ).toHaveCount(1);
+  await releaseResults(page);
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    child,
+  ]);
+  await page.reload();
+  expect((await collection(page)).map((entry) => entry.scanEventId)).toEqual([
+    child,
+  ]);
 });

@@ -540,6 +540,105 @@ describe("native camera source freshness", () => {
     }
   });
 
+  it.each([
+    { now: 524.3999999761581, callbackAt: 520.6, presentationTime: 524.4, presentedFrames: 6, mediaTime: .397014 },
+    { now: 2356.699999988079, callbackAt: 2353.58, presentationTime: 2356.7, presentedFrames: 27, mediaTime: 2.166667 },
+  ])("accepts the observed native subtraction residue without rewriting source evidence: %j", async sample => {
+    const h = harness(), source = h.video(64, 64, false);
+    h.tick(sample.now - h.now()); expect(h.now()).toBe(sample.now);
+    const result = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(sample, sample.callbackAt);
+    const pixels = await result;
+    expect(pixels.capturedAt).toBe(sample.now);
+    expect(pixels.sourceFrame).toEqual({ presentedFrames: sample.presentedFrames, mediaTime: sample.mediaTime, callbackAt: sample.callbackAt, presentationTime: sample.presentationTime });
+    expect(h.capture.isSourceCurrent()).toBe(true);
+    expect(h.frames[0].close).toHaveBeenCalledOnce();
+    h.capture.dispose();
+  });
+
+  // At 1000 ms, one double ULP is 2^-43 ms. All these offsets are exactly
+  // representable, including the very next double beyond the correction bound.
+  it.each([
+    { lead: 2 ** -24 - 2 ** -43, accepted: true },
+    { lead: 2 ** -24, accepted: true },
+    { lead: 2 ** -24 + 2 ** -43, accepted: false },
+    { lead: 1e-6, accepted: false },
+    { lead: .0001, accepted: false },
+    { lead: .1, accepted: false },
+    { lead: 1, accepted: false },
+  ])("bounds only presentation arithmetic equality: %j", async ({ lead, accepted }) => {
+    const h = harness(), source = h.video(64, 64, false);
+    const result = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present({ presentationTime: 1000 + lead }, 1000);
+    if (accepted) {
+      const pixels = await result;
+      expect(pixels.sourceFrame!.presentationTime).toBe(1000 + lead);
+      expect(h.capture.isSourceCurrent()).toBe(true);
+    } else {
+      const error = await result.catch(error => error);
+      expect(error).toBeInstanceOf(CaptureFreshnessError);
+      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      expect(error.message).toMatch(/future native frame timestamps/);
+      expect(h.frames).toHaveLength(0);
+    }
+    h.capture.dispose();
+  });
+
+  it("keeps even a one-ULP future callback timestamp strictly fatal", async () => {
+    const h = harness(), source = h.video(64, 64, false);
+    const result = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present({ presentationTime: 1000 }, 1000 + 2 ** -43);
+    const error = await result.catch(error => error);
+    expect(error).toBeInstanceOf(CaptureFreshnessError);
+    expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+    expect(error.message).toMatch(/future native frame timestamps/);
+    expect(h.frames).toHaveLength(0); h.capture.dispose();
+  });
+
+  it.each(["clock", "callback", "presentation"] as const)("keeps even one-ULP %s regression strictly fatal", async kind => {
+    const h = harness(), source = h.video(64, 64, false);
+    const first = h.capture.capture(source, 1920, h.takeBuffer); source.present(); await first;
+    if (kind === "clock") h.tick(-(2 ** -43));
+    const next = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present({ presentationTime: kind === "presentation" ? 1000 - 2 ** -43 : 1000 }, kind === "callback" ? 1000 - 2 ** -43 : 1000);
+    const error = await next.catch(error => error);
+    expect(error).toBeInstanceOf(CaptureFreshnessError);
+    expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+    expect(error.message).toMatch(/regressed/);
+    expect(h.frames).toHaveLength(1); h.capture.dispose();
+  });
+
+  it("does not relax native identity advancement for numerical-equality captures", async () => {
+    const h = harness(), source = h.video(64, 64, false);
+    const metadata = { presentedFrames: 10, mediaTime: 1, presentationTime: 1000 + 2 ** -24 };
+    const first = h.capture.capture(source, 1920, h.takeBuffer); source.present(metadata, 1000); await first;
+    const repeated = h.capture.capture(source, 1920, h.takeBuffer); source.present(metadata, 1000);
+    await expect(repeated).rejects.toThrow(/repeated or regressed/);
+    expect(h.frames).toHaveLength(1); h.capture.dispose();
+  });
+
+  it("keeps source replacement fatal before applying numerical equality", async () => {
+    const h = harness(), source = h.video(64, 64, false);
+    const result = h.capture.capture(source, 1920, h.takeBuffer);
+    source.src = "replacement";
+    source.present({ presentationTime: 1000 + 2 ** -24 }, 1000);
+    await expect(result).rejects.toThrow(/source changed/);
+    expect(h.frames).toHaveLength(0); h.capture.dispose();
+  });
+
+  it.each(["before-copy", "after-copy"] as const)("keeps the 250 ms age gate strict to one ULP at %s", async stage => {
+    const h = harness(), source = h.video(64, 64, false);
+    const advance = () => h.tick(250 + 2 ** -42); // One ULP above 1250 ms.
+    if (stage === "after-copy") h.behavior.copy = async () => advance();
+    const result = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present();
+    if (stage === "before-copy") advance();
+    await expect(result).rejects.toMatchObject({ name: "CaptureFrameExpiredError", expiry: { stage } });
+    expect(h.frames).toHaveLength(stage === "after-copy" ? 1 : 0);
+    if (stage === "after-copy") expect(h.frames[0].close).toHaveBeenCalledOnce();
+    h.capture.dispose();
+  });
+
   it.each([NaN, Infinity, -1, 1001])("keeps invalid/future timestamps fatal even when the other timestamp expired: %s", async invalid => {
     for (const field of ["callback", "presentation"] as const) {
       const h = harness(), source = h.video(64, 64, false);

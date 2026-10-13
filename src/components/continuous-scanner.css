@@ -22,7 +22,7 @@
   cursor: pointer;
 }
 .continuous-scanner label.button:focus-within {
-  outline: 3px solid var(--lime, #b2f58a);
+  outline: 3px solid var(--accent, var(--accent));
   outline-offset: 3px;
 }
 .continuous-scanner label.button[aria-disabled="true"] {
@@ -31,29 +31,29 @@
 }
 .scanner-setup {
   padding: 12px 14px;
-  border: 1px solid #34443a;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #101713;
+  background: var(--bg);
   margin-bottom: 14px;
   font-size: 12px;
 }
 .scanner-setup > strong {
   display: block;
-  color: #d6e6d5;
+  color: var(--text);
   font-size: 13px;
 }
 .scanner-setup > p {
   margin: 7px 0;
 }
 .scanner-setup.needs-setup {
-  border-color: #839c63;
-  background: #b2f58a08;
+  border-color: var(--dim);
+  background: color-mix(in srgb, var(--accent) 3.1%, transparent);
 }
 .coverage-summary {
   list-style: none;
   margin: 6px 0 0;
   padding: 0;
-  color: #c1d1c1;
+  color: var(--text);
   line-height: 1.5;
   max-height: 140px;
   overflow: auto;
@@ -63,7 +63,7 @@
 }
 .coverage-summary span {
   display: block;
-  color: #a3b49f;
+  color: var(--muted);
 }
 .recognition-caution {
   color: #e6cf92;
@@ -84,15 +84,15 @@
   display: grid;
   gap: 7px;
   font-size: 12px;
-  color: var(--muted, #a0aaa2);
+  color: var(--muted, var(--muted));
   min-width: 0;
   max-width: 100%;
 }
 .live-controls select {
   padding: 10px 12px;
-  border: 1px solid #344339;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #101713;
+  background: var(--bg);
   color: inherit;
   max-width: 100%;
   min-width: 0;
@@ -122,7 +122,7 @@
   font-size: 12px;
   line-height: 1.5;
   margin: 7px 0 0;
-  color: #c0cdbd;
+  color: var(--text);
 }
 .live-session-summary {
   display: flex;
@@ -134,7 +134,7 @@
 }
 .live-session-summary > strong {
   font-weight: 600;
-  color: #c8e8b9;
+  color: var(--accent);
 }
 .live-session-summary > div {
   min-width: 0;
@@ -153,8 +153,8 @@
   width: 100%;
   display: flex;
   justify-content: center;
-  background: #080e0b;
-  border: 1px solid #34443a;
+  background: var(--preview-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -163,7 +163,7 @@
   width: 100%;
   flex: none;
   overflow: hidden;
-  background: #080e0b;
+  background: var(--preview-bg);
 }
 .live-stage video,
 .live-stage > img {
@@ -186,11 +186,11 @@
   justify-content: center;
   text-align: center;
   padding: 12px;
-  color: #a8b6aa;
+  color: var(--muted);
 }
 .live-idle strong {
   font-size: 16px;
-  color: #d5e8d7;
+  color: var(--text);
 }
 .live-idle span {
   font-size: 12px;
@@ -209,8 +209,8 @@
   vector-effect: non-scaling-stroke;
 }
 .live-overlay .track-added {
-  fill: #b2f58a14;
-  stroke: #b2f58a;
+  fill: color-mix(in srgb, var(--accent) 7.8%, transparent);
+  stroke: var(--accent);
 }
 .live-overlay .track-quality,
 .live-overlay .track-error {
@@ -218,8 +218,8 @@
 }
 .track-label {
   position: absolute;
-  background: #111d17f2;
-  border: 1px solid #7c8e62;
+  background: color-mix(in srgb, var(--bg) 94.9%, transparent);
+  border: 1px solid var(--dim);
   border-radius: 5px;
   padding: 3px 5px;
   pointer-events: none;
@@ -233,8 +233,8 @@
   display: inline;
 }
 .track-label.track-added {
-  border-color: #b2f58a;
-  color: #c8ffa6;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .track-label.track-error,
 .track-label.track-quality {
@@ -243,7 +243,7 @@
 .live-paused {
   position: absolute;
   inset: 0;
-  background: #08100a99;
+  background: color-mix(in srgb, var(--preview-bg) 60%, transparent);
   display: grid;
   place-items: center;
   font-size: 26px;
@@ -265,14 +265,14 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  color: #abbba5;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
 }
 .live-rule {
   font-size: 12px;
   line-height: 1.6;
-  color: #a6b0a8;
+  color: var(--muted);
 }
 .scanner-details {
   margin: 16px 0 6px;
@@ -283,14 +283,14 @@
   min-height: 44px;
   align-content: center;
   font-size: 12px;
-  color: #bbcbb6;
+  color: var(--text);
 }
 .pack-toggle {
   display: flex;
   gap: 8px;
   align-items: center;
   background: none;
-  color: #c7d5c8;
+  color: var(--text);
   border: 0;
   font: inherit;
   font-size: 12px;
@@ -316,21 +316,21 @@
 }
 .pack-manager small {
   display: block;
-  color: #a0ada2;
+  color: var(--muted);
   font-size: 12px;
 }
 .pack-storage-help {
-  color: #aabca5;
+  color: var(--muted);
 }
 .pack-progress {
   display: grid;
   gap: 7px;
   width: 100%;
-  color: #d1e8bf;
+  color: var(--accent);
 }
 .pack-progress progress {
   width: 100%;
-  accent-color: #b2f58a;
+  accent-color: var(--accent);
 }
 .pack-compatibility {
   width: 100%;
@@ -344,7 +344,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  border-top: 1px solid #2b382e;
+  border-top: 1px solid var(--border);
   padding-top: 10px;
   overflow-wrap: anywhere;
 }
@@ -353,8 +353,8 @@
 }
 .pack-row button {
   background: none;
-  color: #d4ddd4;
-  border: 1px solid #435346;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 8px;
   cursor: pointer;
@@ -368,7 +368,7 @@
   gap: 4px 16px;
   padding: 8px 0;
   font-size: 12px;
-  color: #b3c2b0;
+  color: var(--muted);
 }
 .photo-unmatched > span {
   flex: 1 1 240px;
@@ -379,7 +379,7 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #a6b0a8;
+  color: var(--muted);
   line-height: 1.5;
   min-height: 44px;
 }
@@ -399,7 +399,7 @@
   gap: 7px;
   align-items: start;
   min-width: 0;
-  background: #101713;
+  background: var(--bg);
   border-radius: 7px;
   padding: 8px;
 }
@@ -416,18 +416,18 @@
   display: block;
   font-size: 12px;
   line-height: 1.5;
-  color: #a7b6aa;
+  color: var(--muted);
 }
 .track-status-number {
   flex: none;
   font-size: 12px;
   padding: 2px 4px;
-  border: 1px solid #6f7d59;
+  border: 1px solid var(--dim);
   border-radius: 4px;
 }
 .track-status-number.track-added {
-  border-color: #a6e787;
-  color: #c8ffa6;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .track-status-number.track-error,
 .track-status-number.track-quality {
@@ -445,7 +445,7 @@
 }
 .receipt-window {
   font-size: 12px;
-  color: #a9b9a6;
+  color: var(--muted);
   margin: 0 0 10px;
 }
 .scan-receipts article {
@@ -454,7 +454,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 14px 0;
-  border-top: 1px solid #2b382e;
+  border-top: 1px solid var(--border);
 }
 .scan-receipts article > div {
   min-width: 0;
@@ -469,7 +469,7 @@
 .scan-receipts small {
   display: block;
   font-size: 12px;
-  color: #b0bdb2;
+  color: var(--muted);
   line-height: 1.7;
 }
 .assisted-scan {
@@ -477,7 +477,7 @@
 }
 .assisted-scan > summary {
   padding: 15px;
-  border: 1px solid #34443a;
+  border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
@@ -530,4 +530,85 @@
     font-size: 11px;
     padding: 2px 3px;
   }
+}
+
+/* The camera action should be reachable before scrolling on a small phone.
+ * Keep the real instruction, uncertainty, warning and 44px controls visible. */
+@media (max-width: 520px) {
+  .continuous-scanner.panel > .panel-heading {
+    display: none;
+  }
+  .continuous-scanner.panel > .section-description {
+    margin-block: 0 8px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .continuous-scanner .scanner-setup:not(.needs-setup):not(.expanded) {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+  }
+  .continuous-scanner .scanner-setup:not(.needs-setup):not(.expanded) > strong {
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .continuous-scanner
+    .scanner-setup:not(.needs-setup):not(.expanded)
+    > .pack-toggle {
+    min-height: 44px;
+    min-width: 0;
+    padding: 0;
+    font-size: 11px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .continuous-scanner
+    .scanner-setup:not(.needs-setup):not(.expanded)
+    > .pack-toggle
+    > svg {
+    display: none;
+  }
+  .continuous-scanner.panel > .scan-options {
+    margin-block: 6px;
+  }
+  .continuous-scanner .scanner-camera-controls .live-actions {
+    gap: 6px;
+  }
+  .continuous-scanner .scanner-camera-controls .live-actions > .button {
+    min-height: 44px;
+    padding-inline: 8px;
+    gap: 5px;
+    font-size: 11px;
+  }
+  .continuous-scanner
+    .scanner-camera-controls
+    .live-actions
+    > button:first-child {
+    flex: 1 1 128px;
+  }
+  .continuous-scanner .scanner-camera-controls .live-actions > label.button {
+    flex: 1 1 100px;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.35;
+  }
+}
+
+/* Installed setup is contextual; the ready path keeps only one compact chip. */
+.scanner-ready-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  margin: 2px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.scan-options > .scanner-setup {
+  margin: 12px 0 0;
 }

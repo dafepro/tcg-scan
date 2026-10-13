@@ -1,3 +1,4 @@
+import { openDisclosure } from "./fixtures/disclosures";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -109,12 +110,14 @@ async function open(page: Page) {
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: "Your next great find. Already in focus.",
+      name: "Scan cards",
     }),
   ).toBeVisible();
 }
 
 async function searchMtg(page: Page, name = "Fixture Mage") {
+  await openDisclosure(page, "Change game");
+  await openDisclosure(page, "Find a card");
   await page.getByRole("button", { name: "Magic", exact: true }).click();
   await page.getByRole("textbox", { name: "Card name or ID" }).fill(name);
   await page.getByRole("button", { name: "Search catalog" }).click();
@@ -183,6 +186,7 @@ test("Pokemon candidates load detail; Yu-Gi-Oh preserves printing warning and om
   page,
 }) => {
   await open(page);
+  await openDisclosure(page, "Find a card");
   await page
     .getByRole("textbox", { name: "Card name or ID" })
     .fill("Fixture Pikachu");
@@ -194,6 +198,8 @@ test("Pokemon candidates load detail; Yu-Gi-Oh preserves printing warning and om
   ).toBeVisible();
   await expect(page.getByText("$1.25", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Scan", exact: true }).click();
+  await openDisclosure(page, "Change game");
+  await openDisclosure(page, "Find a card");
   await page.getByRole("button", { name: "Yu-Gi-Oh!", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Card name or ID" })
@@ -214,6 +220,7 @@ test("empty search and network failure preserve a useful recovery path", async (
   page,
 }) => {
   await open(page);
+  await openDisclosure(page, "Find a card");
   await page.getByRole("button", { name: "Search catalog" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Enter at least 2 characters",

@@ -1,3 +1,4 @@
+import { openDisclosure } from "./fixtures/disclosures";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -237,6 +238,7 @@ test("real browser OCR reads a synthetic PNG, searches its title and requires ma
     path: testInfo.outputPath("real-ocr-synthetic-result.png"),
     fullPage: true,
   });
+  await openDisclosure(page, "Find a card");
   await page.getByRole("button", { name: /^Review Pikachu,/ }).click();
   await page.getByRole("button", { name: /^Review(?:\s*\d+)?$/ }).click();
   await expect(page.getByText("SCAN CANDIDATE", { exact: true })).toBeVisible();

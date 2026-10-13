@@ -88,6 +88,15 @@ const FALLBACK_BYTES = 48 * 1024 * 1024;
 const FALLBACK_FRAMES = 24;
 const SOURCE_WAIT_MS = 1000;
 const SOURCE_MAX_AGE_MS = 250;
+// Chromium can subtract two already-serialized absolute clock values for now(),
+// while serializing presentationTime after subtracting the document origin.
+// In Mac Chromium 156 CI, all 598 retained now() values lay on a 2^-24 ms grid;
+// the two false-future presentation residues were ~0.4 and ~0.2 of that unit.
+// Allow at most ONE observed subtraction unit (~59.6 ps) for this comparison.
+// This is not a browser-resolution/timing allowance or a universal precision
+// guarantee. Raw timestamps, callback/clock ordering and the 250 ms age bound
+// stay unchanged; any larger presentation lead still fails closed.
+const PRESENTATION_ARITHMETIC_UNIT_MS = 2 ** -24;
 
 interface CaptureSource {
   video: HTMLVideoElement;
@@ -235,7 +244,10 @@ export class FrameCapture {
       throw new CaptureFreshnessError("The camera supplied invalid native frame timestamps. Restart the camera.");
     if (now < this.lastFrameCheckAt)
       throw new CaptureFreshnessError("The native frame clock regressed. Restart the camera.");
-    if (now < frame.callbackAt || now < frame.presentationTime)
+    if (
+      now < frame.callbackAt ||
+      frame.presentationTime - now > PRESENTATION_ARITHMETIC_UNIT_MS
+    )
       throw new CaptureFreshnessError("The camera supplied future native frame timestamps. Restart the camera.");
     if (stage === "callback") {
       const previous = this.lastObservedSourceFrame;

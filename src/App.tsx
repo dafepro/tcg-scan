@@ -1,4 +1,19 @@
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import DebugConsole from "./components/DebugConsole";
+import { useAppPreferences } from "./lib/app-preferences";
+import { diagnostics } from "./lib/diagnostics";
+import {
+  needsSessionEndConfirmation,
+  sameScannerLifecycle,
+  type ScannerLifecycle,
+} from "./lib/scanner-lifecycle";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -33,6 +48,7 @@ import {
   addScanEvent,
   undoScanEvent,
   refineScanPrinting,
+  type ScanSaveOptions,
 } from "./lib/scan-inventory";
 import type { ReferenceMetadata } from "./lib/vision";
 import CardImage from "./components/CardImage";
@@ -67,6 +83,11 @@ import "./components/scanner.css";
 
 type SetAppData = (next: AppData | ((current: AppData) => AppData)) => boolean;
 type View = "scan" | "review" | "collection" | "decks";
+type ScanTransition = {
+  view?: View;
+  game?: Game;
+  captureFlow?: "live" | "pack";
+};
 const nav = [
   { id: "scan", label: "Scan", icon: ScanLine },
   { id: "review", label: "Review", icon: ClipboardCheck },
@@ -108,6 +129,23 @@ function Source({ card }: { card: Card }) {
 }
 
 export default function App() {
+  const {
+    preferences,
+    updatePreferences,
+    storageStatus: preferenceStorage,
+  } = useAppPreferences();
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = preferences.theme;
+    root.dataset.motion = preferences.motion;
+    root.dataset.density = preferences.density;
+    root.dataset.overlayDetail = preferences.overlayDetail;
+  }, [
+    preferences.theme,
+    preferences.motion,
+    preferences.density,
+    preferences.overlayDetail,
+  ]);
   const [initial] = useState(loadData);
   const [data, commitData] = useState<AppData>(initial.data);
   const dataRef = useRef(initial.data);
@@ -115,8 +153,42 @@ export default function App() {
   const storageConflict = useRef(false);
   const storageSnapshot = useRef<string | null | undefined>(undefined);
   const [view, setView] = useState<View>("scan");
-  const [game, setGame] = useState<Game>("pokemon");
-  const [captureFlow, setCaptureFlow] = useState<"live" | "pack">("live");
+  const [game, setGame] = useState<Game>(preferences.game);
+  const [captureFlow, setCaptureFlowState] = useState<"live" | "pack">(
+    preferences.captureFlow,
+  );
+  const [scannerState, setScannerState] = useState<ScannerLifecycle | null>(
+    null,
+  );
+  const [pendingTransition, setPendingTransition] =
+    useState<ScanTransition | null>(null);
+  const [endedContext, setEndedContext] = useState<{
+    game: Game;
+    flow: "live" | "pack";
+    savedCount: number;
+  } | null>(null);
+  const lastCommittedSession = useRef<string | null>(null);
+  const reportScannerState = useCallback((next: ScannerLifecycle) => {
+    setScannerState((old) => (sameScannerLifecycle(old, next) ? old : next));
+    if (
+      next.sessionId &&
+      next.phase !== "preparing" &&
+      next.sessionId !== lastCommittedSession.current
+    ) {
+      lastCommittedSession.current = next.sessionId;
+      setEndedContext(null);
+    }
+  }, []);
+  const setCaptureFlow = (flow: "live" | "pack") =>
+    requestTransition({ captureFlow: flow });
+  const navigate = (next: View) => requestTransition({ view: next });
+  useEffect(() => {
+    diagnostics.update("app", {
+      game,
+      captureFlow,
+      storage: preferenceStorage,
+    });
+  }, [game, captureFlow, preferenceStorage]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Card[]>([]);
   const [searching, setSearching] = useState(false);
@@ -126,9 +198,14 @@ export default function App() {
   const [origin, setOrigin] = useState<"search" | "scan">("search");
   const [notice, setNotice] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const searchController = useRef<AbortController | null>(null);
   const selectController = useRef<AbortController | null>(null);
   const queryInput = useRef<HTMLInputElement>(null);
+  const openCardLookup = useCallback(() => {
+    setLookupOpen(true);
+    requestAnimationFrame(() => queryInput.current?.focus());
+  }, []);
   const importInput = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<AppData | null>(null);
   const [importError, setImportError] = useState("");
@@ -176,11 +253,29 @@ export default function App() {
         : "Could not save this scan.";
     }
   }
-  function saveScan(reference: ReferenceMetadata, eventId: string) {
-    return durableScanChange({
+  function saveScan(
+    reference: ReferenceMetadata,
+    eventId: string,
+    options?: ScanSaveOptions,
+  ) {
+    const failure = durableScanChange({
       ...dataRef.current,
-      collection: addScanEvent(dataRef.current.collection, reference, eventId),
+      collection: addScanEvent(
+        dataRef.current.collection,
+        reference,
+        eventId,
+        options,
+      ),
     });
+    diagnostics.record("storage", failure ? "error" : "save", {
+      status: failure ? "failed" : "success",
+      ...(failure ? { reason: "save-failed" as const } : {}),
+      saved: dataRef.current.collection.reduce(
+        (sum, entry) => sum + entry.quantity,
+        0,
+      ),
+    });
+    return failure;
   }
   function refinePrinting(
     eventId: string,
@@ -250,16 +345,48 @@ export default function App() {
     },
     [],
   );
-  function changeGame(next: Game) {
+  function commitGame(next: Game) {
     searchController.current?.abort();
     selectController.current?.abort();
     setSearching(false);
     setSelecting(null);
     setGame(next);
+    updatePreferences({ game: next });
     setResults([]);
     setSearchError("");
     setSearched(false);
     setQuery("");
+  }
+  function applyTransition(target: ScanTransition) {
+    if (view === "scan") {
+      if (scannerState && (scannerState.sessionId || scannerState.savedCount))
+        setEndedContext({
+          game,
+          flow: captureFlow,
+          savedCount: scannerState.savedCount,
+        });
+      setScannerState(null);
+    }
+    setPendingTransition(null);
+    if (target.game !== undefined) commitGame(target.game);
+    if (target.captureFlow !== undefined) {
+      setCaptureFlowState(target.captureFlow);
+      updatePreferences({ captureFlow: target.captureFlow });
+    }
+    if (target.view !== undefined) setView(target.view);
+  }
+  function requestTransition(target: ScanTransition) {
+    const changed =
+      (target.view !== undefined && target.view !== view) ||
+      (target.game !== undefined && target.game !== game) ||
+      (target.captureFlow !== undefined && target.captureFlow !== captureFlow);
+    if (!changed) return;
+    if (view === "scan" && needsSessionEndConfirmation(scannerState))
+      setPendingTransition(target);
+    else applyTransition(target);
+  }
+  function changeGame(next: Game) {
+    requestTransition({ game: next });
   }
   async function runSearch(value = query, from: "search" | "scan" = "search") {
     const term = value.trim();
@@ -379,7 +506,7 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            setView("scan");
+            navigate("scan");
           }}
           aria-label="tcg scan home"
         >
@@ -397,7 +524,7 @@ export default function App() {
               key={n.id}
               className={view === n.id ? "nav-link active" : "nav-link"}
               aria-current={view === n.id ? "page" : undefined}
-              onClick={() => setView(n.id)}
+              onClick={() => navigate(n.id)}
             >
               <n.icon size={17} />
               <span>{n.label}</span>
@@ -430,47 +557,50 @@ export default function App() {
       <main className="app-main">
         {view === "scan" && (
           <>
-            <section className="page-heading scan-heading">
+            <section className="page-heading scan-heading compact-scan-heading">
               <div>
-                <p className="eyebrow">
-                  <span /> A HOME FOR EVERY CARD
-                </p>
-                <h1>
-                  Your next great find.
-                  <br /> <span>Already in focus.</span>
-                </h1>
-                <p className="page-intro">Scan locally. Keep collecting.</p>
+                <p className="eyebrow">YOUR COLLECTION, IN FOCUS</p>
+                <h1>Scan cards</h1>
               </div>
-              <div className="hero-stat">
-                <Layers3 size={22} />
-                <strong>{totalCards.toLocaleString()}</strong>
-                <span>cards in your collection</span>
-                <button onClick={() => setView("collection")}>
-                  Open collection
-                  <ArrowRight size={14} />
-                </button>
-              </div>
+              <button
+                className="button subtle"
+                onClick={() => navigate("collection")}
+              >
+                <Layers3 size={17} />
+                {totalCards.toLocaleString()} cards
+                <ArrowRight size={15} />
+              </button>
             </section>
             <div className="workspace-heading">
-              <div
-                className="game-tabs"
-                role="group"
-                aria-label="Choose card game"
-              >
-                {(Object.keys(GAME_LABELS) as Game[]).map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => changeGame(g)}
-                    aria-pressed={game === g}
-                    className={game === g ? "selected" : ""}
-                  >
-                    <span className={`game-dot ${g}`} />
-                    {GAME_SHORT[g]}
-                  </button>
-                ))}
-              </div>
+              <details className="game-context">
+                <summary>
+                  {GAME_LABELS[game]} <ChevronRight size={14} />{" "}
+                  <span>Change game</span>
+                </summary>
+                <div
+                  className="game-tabs"
+                  role="group"
+                  aria-label="Choose card game"
+                >
+                  {(Object.keys(GAME_LABELS) as Game[]).map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => changeGame(g)}
+                      aria-pressed={game === g}
+                      className={game === g ? "selected" : ""}
+                    >
+                      <span className={`game-dot ${g}`} />
+                      {GAME_SHORT[g]}
+                    </button>
+                  ))}
+                </div>
+                <p>
+                  Scans use all installed references for this game. No card set
+                  selection needed.
+                </p>
+              </details>
               <span className="quiet-label">
-                <ShieldCheck size={14} /> Your photos stay on your device
+                <ShieldCheck size={14} /> Photos stay on your device
               </span>
             </div>
             <div className="scan-workspace">
@@ -495,6 +625,14 @@ export default function App() {
                     Pack opening
                   </button>
                 </div>
+                {endedContext && (
+                  <p className="session-boundary-note" role="status">
+                    Previous {endedContext.flow === "pack" ? "pack" : "live"}{" "}
+                    session ended · {endedContext.savedCount} saved. Your
+                    collection is kept. Starting a new session may count those
+                    cards again.
+                  </p>
+                )}
                 {captureFlow === "live" ? (
                   <ContinuousScanner
                     key={game}
@@ -502,6 +640,10 @@ export default function App() {
                     onSave={saveScan}
                     onUndo={undoScan}
                     onPrinting={refinePrinting}
+                    onSessionState={reportScannerState}
+                    onFindCard={openCardLookup}
+                    preferences={preferences}
+                    onPreferencesChange={updatePreferences}
                   />
                 ) : (
                   <PackScanner
@@ -510,6 +652,8 @@ export default function App() {
                     onSave={saveScan}
                     onUndo={undoScan}
                     onSetup={() => setCaptureFlow("live")}
+                    onSessionState={reportScannerState}
+                    onFindCard={openCardLookup}
                   />
                 )}
                 <details className="assisted-scan">
@@ -520,196 +664,211 @@ export default function App() {
                   <Scanner
                     key={game}
                     game={game}
-                    onRecognized={(text) => void runSearch(text, "scan")}
-                    onManualSearch={() => queryInput.current?.focus()}
+                    onRecognized={(text) => {
+                      setLookupOpen(true);
+                      void runSearch(text, "scan");
+                    }}
+                    onManualSearch={() => {
+                      setLookupOpen(true);
+                      requestAnimationFrame(() => queryInput.current?.focus());
+                    }}
                   />
                 </details>
               </div>
-              <aside className="search-panel panel">
-                <div className="panel-heading">
-                  <div>
-                    <span className="eyebrow">FIND YOUR CARD</span>
-                    <h2>Card lookup</h2>
+              <details
+                className="manual-lookup"
+                open={lookupOpen}
+                onToggle={(event) => setLookupOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  <Search size={17} /> Find a card <span>Manual lookup</span>
+                  <ChevronRight
+                    className="disclosure-arrow"
+                    size={16}
+                    aria-hidden="true"
+                  />
+                </summary>
+                <aside className="search-panel panel">
+                  <div className="panel-heading">
+                    <div>
+                      <span className="eyebrow">FIND YOUR CARD</span>
+                      <h2>Card lookup</h2>
+                    </div>
+                    <Search size={20} />
                   </div>
-                  <Search size={20} />
-                </div>
-                <p className="section-description">
-                  Fallback lookup for uncovered or ambiguous cards. Live
-                  scanning uses your installed local reference packs.
-                </p>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void runSearch();
-                  }}
-                >
-                  <label className="sr-only" htmlFor="catalog-search">
-                    Card name or ID
-                  </label>
-                  <div className="search-input">
-                    <Search size={18} />
-                    <input
-                      ref={queryInput}
-                      id="catalog-search"
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder={
-                        game === "pokemon"
-                          ? "Try “Pikachu” or “base1-58”"
-                          : game === "mtg"
-                            ? "Try “Lightning Bolt”"
-                            : "Try “Dark Magician”"
-                      }
-                      maxLength={150}
-                    />
-                    <button
-                      type="submit"
-                      aria-label="Search catalog"
-                      disabled={searching}
-                    >
-                      {searching ? (
-                        <LoaderCircle size={17} className="spin" />
-                      ) : (
-                        <ArrowRight size={18} />
-                      )}
-                    </button>
-                  </div>
-                </form>
-                {searchError && (
-                  <p className="error-message" role="alert">
-                    {searchError}
+                  <p className="section-description">
+                    Fallback lookup for uncovered or ambiguous cards. Live
+                    scanning uses your installed local reference packs.
                   </p>
-                )}
-                {searching && (
-                  <div className="search-loading" role="status">
-                    <LoaderCircle className="spin" size={24} />
-                    <span>Searching {GAME_SHORT[game]} cards…</span>
-                  </div>
-                )}
-                {!searching && !searched && !searchError && (
-                  <div className="lookup-empty">
-                    <div className="mini-card-stack">
-                      <span />
-                      <span />
-                      <span>
-                        <Sparkles size={27} />
-                      </span>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void runSearch();
+                    }}
+                  >
+                    <label className="sr-only" htmlFor="catalog-search">
+                      Card name or ID
+                    </label>
+                    <div className="search-input">
+                      <Search size={18} />
+                      <input
+                        ref={queryInput}
+                        id="catalog-search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder={
+                          game === "pokemon"
+                            ? "Try “Pikachu” or “base1-58”"
+                            : game === "mtg"
+                              ? "Try “Lightning Bolt”"
+                              : "Try “Dark Magician”"
+                        }
+                        maxLength={150}
+                      />
+                      <button
+                        type="submit"
+                        aria-label="Search catalog"
+                        disabled={searching}
+                      >
+                        {searching ? (
+                          <LoaderCircle size={17} className="spin" />
+                        ) : (
+                          <ArrowRight size={18} />
+                        )}
+                      </button>
                     </div>
-                    <h3>Find the one in your hand.</h3>
-                    <p>
-                      Names and card IDs work best.
-                      <br />
-                      You’ll confirm every match before saving.
+                  </form>
+                  {searchError && (
+                    <p className="error-message" role="alert">
+                      {searchError}
                     </p>
-                    <div className="suggestions">
-                      {(game === "pokemon"
-                        ? ["Pikachu", "Charizard"]
-                        : game === "mtg"
-                          ? ["Lightning Bolt", "Sol Ring"]
-                          : ["Dark Magician", "Blue-Eyes"]
-                      ).map((q) => (
-                        <button key={q} onClick={() => void runSearch(q)}>
-                          {q}
-                          <ChevronRight size={12} />
-                        </button>
-                      ))}
+                  )}
+                  {searching && (
+                    <div className="search-loading" role="status">
+                      <LoaderCircle className="spin" size={24} />
+                      <span>Searching {GAME_SHORT[game]} cards…</span>
                     </div>
-                  </div>
-                )}
-                {searched && !searching && (
-                  <>
-                    <div className="results-label">
-                      {results.length
-                        ? `${results.length} possible ${results.length === 1 ? "match" : "matches"}`
-                        : "No cards found"}
-                      <span>Confirm the printing</span>
-                    </div>
-                    {results.length === 0 ? (
-                      <div className="empty-inline">
-                        <Search size={28} />
-                        <p>
-                          Try a shorter name, check the spelling, or switch card
-                          games.
-                        </p>
+                  )}
+                  {!searching && !searched && !searchError && (
+                    <div className="lookup-empty">
+                      <div className="mini-card-stack">
+                        <span />
+                        <span />
+                        <span>
+                          <Sparkles size={27} />
+                        </span>
                       </div>
-                    ) : (
-                      <div className="search-results">
-                        {results.map((card) => (
-                          <button
-                            className="search-result"
-                            key={card.id}
-                            onClick={() => void chooseCard(card)}
-                            disabled={selecting !== null}
-                            aria-label={`Review ${card.name}, ${card.setName || card.setCode}`}
-                          >
-                            <CardImage card={card} />
-                            <span className="result-copy">
-                              <strong>{card.name}</strong>
-                              <small>
-                                {card.setName || card.setCode}{" "}
-                                {card.number && `· #${card.number}`}
-                              </small>
-                              <Price card={card} />
-                            </span>
-                            <span className="result-add">
-                              {selecting === card.id ? (
-                                <LoaderCircle className="spin" size={17} />
-                              ) : (
-                                <Plus size={17} />
-                              )}
-                            </span>
+                      <h3>Find the one in your hand.</h3>
+                      <p>
+                        Names and card IDs work best.
+                        <br />
+                        You’ll confirm every match before saving.
+                      </p>
+                      <div className="suggestions">
+                        {(game === "pokemon"
+                          ? ["Pikachu", "Charizard"]
+                          : game === "mtg"
+                            ? ["Lightning Bolt", "Sol Ring"]
+                            : ["Dark Magician", "Blue-Eyes"]
+                        ).map((q) => (
+                          <button key={q} onClick={() => void runSearch(q)}>
+                            {q}
+                            <ChevronRight size={12} />
                           </button>
                         ))}
                       </div>
-                    )}
-                  </>
-                )}
-                {data.review.length > 0 && (
-                  <button
-                    className="review-callout"
-                    onClick={() => setView("review")}
-                  >
-                    <ClipboardCheck size={18} />
-                    <span>
-                      {data.review.length}{" "}
-                      {data.review.length === 1 ? "card" : "cards"} ready to
-                      review
-                    </span>
-                    <ArrowRight size={17} />
-                  </button>
-                )}
-                <div className="provider-footnote">
-                  {game === "pokemon"
-                    ? "Catalog by TCGdex"
-                    : game === "mtg"
-                      ? "Catalog by Scryfall"
-                      : "Catalog by YGOPRODeck · artwork omitted per provider policy"}
-                  . Catalog searches use the internet.
-                </div>
-              </aside>
+                    </div>
+                  )}
+                  {searched && !searching && (
+                    <>
+                      <div className="results-label">
+                        {results.length
+                          ? `${results.length} possible ${results.length === 1 ? "match" : "matches"}`
+                          : "No cards found"}
+                        <span>Confirm the printing</span>
+                      </div>
+                      {results.length === 0 ? (
+                        <div className="empty-inline">
+                          <Search size={28} />
+                          <p>
+                            Try a shorter name, check the spelling, or switch
+                            card games.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="search-results">
+                          {results.map((card) => (
+                            <button
+                              className="search-result"
+                              key={card.id}
+                              onClick={() => void chooseCard(card)}
+                              disabled={selecting !== null}
+                              aria-label={`Review ${card.name}, ${card.setName || card.setCode}`}
+                            >
+                              <CardImage card={card} />
+                              <span className="result-copy">
+                                <strong>{card.name}</strong>
+                                <small>
+                                  {card.setName || card.setCode}{" "}
+                                  {card.number && `· #${card.number}`}
+                                </small>
+                                <Price card={card} />
+                              </span>
+                              <span className="result-add">
+                                {selecting === card.id ? (
+                                  <LoaderCircle className="spin" size={17} />
+                                ) : (
+                                  <Plus size={17} />
+                                )}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {data.review.length > 0 && (
+                    <button
+                      className="review-callout"
+                      onClick={() => navigate("review")}
+                    >
+                      <ClipboardCheck size={18} />
+                      <span>
+                        {data.review.length}{" "}
+                        {data.review.length === 1 ? "card" : "cards"} ready to
+                        review
+                      </span>
+                      <ArrowRight size={17} />
+                    </button>
+                  )}
+                  <div className="provider-footnote">
+                    {game === "pokemon"
+                      ? "Catalog by TCGdex"
+                      : game === "mtg"
+                        ? "Catalog by Scryfall"
+                        : "Catalog by YGOPRODeck · artwork omitted per provider policy"}
+                    . Catalog searches use the internet.
+                  </div>
+                </aside>
+              </details>
             </div>
-            <div className="workflow-cards">
-              <div>
-                <span className="step-number">01</span>
-                <div>
-                  <h3>Bring your cards into focus</h3>
-                  <p>Good light, separated cards, all four edges visible.</p>
-                </div>
-              </div>
-              <div>
-                <span className="step-number">02</span>
-                <div>
-                  <h3>Strong matches save locally</h3>
-                  <p>Review unconfirmed printing, finish and condition.</p>
-                </div>
-              </div>
-              <div>
-                <span className="step-number">03</span>
-                <div>
-                  <h3>Keep your collection yours</h3>
-                  <p>No account. Local storage. Export any time.</p>
-                </div>
-              </div>
+            <div className="scan-next-links">
+              <button
+                className="button subtle"
+                onClick={() => navigate("collection")}
+              >
+                <Layers3 size={16} /> View collection <ArrowRight size={14} />
+              </button>
+              {data.review.length > 0 && (
+                <button
+                  className="button subtle"
+                  onClick={() => navigate("review")}
+                >
+                  <ClipboardCheck size={16} />
+                  Review {data.review.length} cards
+                  <ArrowRight size={14} />
+                </button>
+              )}
             </div>
           </>
         )}
@@ -722,7 +881,7 @@ export default function App() {
               action={
                 <button
                   className="button secondary"
-                  onClick={() => setView("scan")}
+                  onClick={() => navigate("scan")}
                 >
                   <Plus size={16} /> Find more cards
                 </button>
@@ -734,7 +893,7 @@ export default function App() {
                 title="All caught up."
                 description="Assisted search and OCR finds wait here for your approval. Automatic visual matches are already in Collection."
                 action="Find your first card"
-                onAction={() => setView("scan")}
+                onAction={() => navigate("scan")}
               />
             ) : (
               <div className="review-grid">
@@ -761,7 +920,7 @@ export default function App() {
             setData={setData}
             totals={totals}
             totalCards={totalCards}
-            onScan={() => setView("scan")}
+            onScan={() => navigate("scan")}
             onExport={exportBackup}
             onImport={() => importInput.current?.click()}
             notify={setNotice}
@@ -771,6 +930,11 @@ export default function App() {
           <DeckView data={data} setData={setData} notify={setNotice} />
         )}
       </main>
+      <DebugConsole
+        preferences={preferences}
+        onPreferencesChange={updatePreferences}
+        storageStatus={preferenceStorage}
+      />
       <footer className="site-footer">
         <span className="footer-brand">
           <ScanLine size={15} />
@@ -879,6 +1043,35 @@ export default function App() {
                 <ExternalLink size={14} />
               </a>
             </section>
+          </div>
+        </Modal>
+      )}
+      {pendingTransition && (
+        <Modal
+          title="End this scanning session and switch?"
+          onClose={() => setPendingTransition(null)}
+        >
+          <p>
+            Saved cards stay in your collection. Queued captures, unfinished
+            analysis and unsaved photo results will be cancelled. Starting
+            another session can count the same cards again.
+          </p>
+          <p>
+            Capture continues while you decide. Paused capture stays paused.
+          </p>
+          <div className="modal-actions">
+            <button
+              className="button secondary"
+              onClick={() => setPendingTransition(null)}
+            >
+              Stay here
+            </button>
+            <button
+              className="button primary"
+              onClick={() => applyTransition(pendingTransition)}
+            >
+              End session and switch
+            </button>
           </div>
         </Modal>
       )}

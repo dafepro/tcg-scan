@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Check, Film, Pause, Play, Square, Undo2 } from "lucide-react";
+import {
+  Camera,
+  Check,
+  Film,
+  Pause,
+  Play,
+  Plus,
+  Square,
+  Undo2,
+} from "lucide-react";
 import type { Game } from "../types";
 import { VisionClient } from "../lib/vision";
 import type { ReferenceMetadata } from "../lib/vision";
@@ -9,13 +18,22 @@ import type { PackCaptureStats } from "../lib/pack-capture";
 import { PackSession } from "../lib/pack-session";
 import type { PackReceipt, PackSaveIntent } from "../lib/pack-session";
 import { cameraFailureMessage } from "./continuous-scanner-ui";
-import { referenceCard } from "../lib/scan-inventory";
+import { referenceCard, type ScanSaveOptions } from "../lib/scan-inventory";
 import { ReferenceQuotes } from "./ReferenceQuotes";
 import "./pack-scanner.css";
+import { diagnostics } from "../lib/diagnostics";
+import type { ScannerLifecycle } from "../lib/scanner-lifecycle";
+import { createPresentationScheduler } from "../lib/presentation-scheduler";
 
 type Props = {
   game: Game;
-  onSave(reference: ReferenceMetadata, eventId: string): string | undefined;
+  onSessionState?(state: ScannerLifecycle): void;
+  onFindCard?(): void;
+  onSave(
+    reference: ReferenceMetadata,
+    eventId: string,
+    options?: ScanSaveOptions,
+  ): string | undefined;
   onUndo(eventId: string): string | undefined;
   onSetup(): void;
 };
@@ -69,7 +87,14 @@ function metadata(video: HTMLVideoElement, signal: AbortSignal): Promise<void> {
     else if (video.readyState >= 1) ready();
   });
 }
-export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
+export default function PackScanner({
+  game,
+  onSave,
+  onUndo,
+  onSetup,
+  onSessionState,
+  onFindCard,
+}: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const loop = useRef<PackCaptureLoop | null>(null);
   const client = useRef<VisionClient | null>(null);
@@ -78,6 +103,7 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
   const sourceUrl = useRef<string | null>(null);
   const saveError = useRef<string | null>(null);
   const preparation = useRef<AbortController | null>(null);
+  const newSessionPending = useRef(false);
   const controlEpoch = useRef(0);
   const generation = useRef(0),
     busyRef = useRef(false),
@@ -102,20 +128,52 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
   const [stats, setStats] = useState<PackCaptureStats>();
   const [showAll, setShowAll] = useState(false);
   const [mediaSize, setMediaSize] = useState({ width: 1280, height: 720 });
-  const refresh = () => {
+  const latestStats = useRef<PackCaptureStats | undefined>(undefined);
+  const snapshotWork = useRef({ count: 0, totalMs: 0, maxMs: 0 });
+  const publish = useCallback(() => {
+    // This measures snapshot preparation only, not React commit or rendering.
+    const startedAt = performance.now();
     setReceipts(session.current?.snapshot() ?? []);
     setPrunedReceipts(session.current?.prunedReceiptCount ?? 0);
-  };
+    setStats(latestStats.current);
+    const elapsed = Math.max(0, performance.now() - startedAt);
+    snapshotWork.current.count++;
+    snapshotWork.current.totalMs += elapsed;
+    snapshotWork.current.maxMs = Math.max(snapshotWork.current.maxMs, elapsed);
+    diagnostics.update("pack", {
+      presentationSnapshots: snapshotWork.current.count,
+      presentationMs: snapshotWork.current.totalMs,
+      presentationMaxMs: snapshotWork.current.maxMs,
+    });
+  }, []);
+  const presentation = useRef<ReturnType<
+    typeof createPresentationScheduler
+  > | null>(null);
+  useEffect(() => {
+    const scheduler = createPresentationScheduler(publish);
+    presentation.current = scheduler;
+    return () => {
+      scheduler.cancel();
+      if (presentation.current === scheduler) presentation.current = null;
+    };
+  }, [publish]);
+  const refresh = useCallback((immediate = false) => {
+    presentation.current?.request(immediate);
+  }, []);
   const release = useCallback((cancel: boolean) => {
     generation.current++;
     controlEpoch.current++;
+    presentation.current?.cancel();
     preparation.current?.abort();
     preparation.current = null;
-    loop.current?.dispose();
+    if (loop.current) {
+      loop.current.dispose();
+      latestStats.current = loop.current.stats;
+    }
     loop.current = null;
     client.current?.dispose();
     client.current = null;
-    if (cancel) session.current?.cancel();
+    if (cancel && !newSessionPending.current) session.current?.cancel();
     for (const track of stream.current?.getTracks() ?? []) {
       track.onended = null;
       track.onmute = null;
@@ -138,25 +196,24 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
       text = "Stopped. Saved cards are kept; unsaved captured views were cancelled.",
     ) => {
       release(true);
+      newSessionPending.current = false;
       setBusy(false);
       setActive(false);
       setPaused(false);
       setDraining(false);
-      setStats((old) =>
-        old
-          ? {
-              ...old,
-              queued: 0,
-              inFlight: 0,
-              retainedBytes: 0,
-              captureEnded: true,
-            }
-          : old,
-      );
+      if (latestStats.current)
+        latestStats.current = {
+          ...latestStats.current,
+          queued: 0,
+          reservoirViews: 0,
+          inFlight: 0,
+          retainedBytes: 0,
+          captureEnded: true,
+        };
       setMessage(text);
-      setReceipts(session.current?.snapshot() ?? []);
+      refresh(true);
     },
-    [release],
+    [release, refresh],
   );
   useEffect(() => {
     let current = true;
@@ -202,10 +259,16 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
   }, [stop]);
   function persist(intent: PackSaveIntent) {
     const current = session.current;
-    if (!current || pausedRef.current) return;
+    if (!current || (pausedRef.current && !intent.quantityConfirmation)) return;
     let failure: string | undefined;
     try {
-      failure = callbacks.current.onSave(intent.reference, intent.eventId);
+      failure = callbacks.current.onSave(
+        intent.reference,
+        intent.eventId,
+        intent.quantityConfirmation
+          ? { quantitySource: "user-confirmed" }
+          : undefined,
+      );
     } catch (error) {
       failure = errorText(error);
     }
@@ -223,18 +286,15 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
   }
   async function start(file?: File) {
     if (busyRef.current || active || !references) return;
-    release(true);
+    newSessionPending.current = true;
+    diagnostics.reset("pack");
+    release(false);
     busyRef.current = true;
     setBusy(true);
     setActive(false);
     setPaused(false);
     setDraining(false);
     setError("");
-    saveError.current = null;
-    setStats(undefined);
-    setReceipts([]);
-    setPrunedReceipts(0);
-    setShowAll(false);
     kindRef.current = file ? "video" : "camera";
     setSourceKind(kindRef.current);
     const gen = generation.current,
@@ -243,7 +303,6 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
     const current = () =>
       gen === generation.current && !controller.signal.aborted;
     const s = new PackSession(crypto.randomUUID());
-    session.current = s;
     let openingCamera = !file;
     try {
       const element = video.current;
@@ -361,18 +420,29 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
         },
         onResult: (view, result, timing) => {
           if (!current() || pausedRef.current) return;
-          for (const intent of s.consume(
+          const intents = s.consume(
             view.captureId,
             result,
             timing.completedAt,
             true,
-          ))
-            persist(intent);
-          refresh();
+          );
+          for (const intent of intents) persist(intent);
+          diagnostics.record("pack", "scan", {
+            width: result.width,
+            height: result.height,
+            totalMs: result.timings.totalMs,
+            queueWaitMs: timing.queueWaitMs,
+            captureToResultMs: timing.captureToResultMs,
+            matchingMs: result.timings.matchingMs,
+            detections: result.detections.length,
+            verified: result.detections.filter((d) => d.autoEligible).length,
+          });
+          refresh(intents.length > 0);
         },
         onStats: (value) => {
           if (current()) {
-            setStats(value);
+            latestStats.current = value;
+            refresh();
             if (value.captureEnded) {
               setDraining(true);
               setMessage(
@@ -397,7 +467,7 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
             setMessage(
               "Captured views processed. Check saved identities and any unmatched views below.",
             );
-            refresh();
+            refresh(true);
           }
         },
       });
@@ -405,6 +475,18 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
       element.playbackRate = 1;
       await element.play();
       if (!current()) return;
+      // The new session begins only once its source and local matcher are ready.
+      // A cancelled permission/model preparation keeps the previous saved receipts.
+      session.current?.cancel();
+      session.current = s;
+      newSessionPending.current = false;
+      saveError.current = null;
+      latestStats.current = undefined;
+      snapshotWork.current = { count: 0, totalMs: 0, maxMs: 0 };
+      setStats(undefined);
+      setReceipts([]);
+      setPrunedReceipts(0);
+      setShowAll(false);
       busyRef.current = false;
       setBusy(false);
       setActive(true);
@@ -482,19 +564,150 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
       if (error) setError(error);
       else {
         session.current?.undo(receipt.eventId);
-        refresh();
+        refresh(true);
       }
     } catch (error) {
       setError(errorText(error));
     }
   }
+  function addAnotherCopy(receipt: PackReceipt) {
+    if (busy || receipt.status !== "saved") return;
+    try {
+      const intent = session.current?.confirmAnotherCopy(
+        receipt.receiptId,
+        crypto.randomUUID(),
+      );
+      if (!intent) return;
+      persist(intent);
+      refresh(true);
+      const outcome = session.current
+        ?.snapshot()
+        .find((item) => item.eventId === intent.eventId);
+      diagnostics.record(
+        "pack",
+        outcome?.status === "saved" ? "save" : "error",
+        { status: outcome?.status === "saved" ? "success" : "failed" },
+      );
+    } catch (failure) {
+      setError(errorText(failure));
+    }
+  }
   const saved = receipts.filter((receipt) => receipt.status === "saved");
+  useEffect(() => {
+    diagnostics.update("pack", {
+      game,
+      active,
+      paused,
+      busy,
+      references: references ?? 0,
+      saved: saved.length,
+      pending:
+        (stats?.queued ?? 0) +
+        (stats?.reservoirViews ?? 0) +
+        (stats?.inFlight ?? 0),
+      queueDepth: stats?.queued ?? 0,
+      bytes: stats?.retainedBytes ?? 0,
+      captured: stats?.captured ?? 0,
+      admitted: stats?.admitted ?? 0,
+      backpressureDeferred: stats?.backpressureDeferred ?? 0,
+      backpressureRejected: stats?.backpressureRejected ?? 0,
+      queueRejected: stats?.queueRejected ?? 0,
+      queueOmitted: stats?.queueOmitted ?? 0,
+      queueReplaced: stats?.replaced ?? 0,
+      reservoirCancelled: stats?.reservoirCancelled ?? 0,
+      reservoirReplaced: stats?.reservoirReplaced ?? 0,
+      reservoirPromoted: stats?.reservoirPromoted ?? 0,
+      reservoirViews: stats?.reservoirViews ?? 0,
+      adaptivePendingLimit: stats?.adaptivePendingLimit ?? 0,
+      workerServiceMs: stats?.workerServiceMs ?? 0,
+      skipped: stats?.preFiltered ?? 0,
+      dropped: stats?.queueDropped ?? 0,
+      processed: stats?.processed ?? 0,
+      retries: stats?.captureRetries ?? 0,
+      status: error
+        ? "failed"
+        : busy
+          ? "preparing"
+          : paused
+            ? "paused"
+            : draining
+              ? "processing"
+              : active
+                ? "running"
+                : "idle",
+    });
+  }, [
+    game,
+    active,
+    paused,
+    busy,
+    references,
+    saved.length,
+    stats,
+    error,
+    draining,
+  ]);
+  useEffect(() => {
+    diagnostics.record(
+      "pack",
+      error ? "error" : paused ? "pause" : active ? "start" : "stop",
+      {
+        status: error
+          ? "failed"
+          : paused
+            ? "paused"
+            : active
+              ? "running"
+              : "stopped",
+        ...(error ? { reason: "scan-failed" as const } : {}),
+      },
+    );
+  }, [active, paused, error]);
+  useEffect(() => {
+    onSessionState?.({
+      phase: busy
+        ? "preparing"
+        : paused
+          ? "paused"
+          : draining
+            ? "draining"
+            : active
+              ? "active"
+              : session.current
+                ? "ended"
+                : "idle",
+      sessionId: session.current?.sessionId ?? null,
+      savedCount: saved.length,
+    });
+  }, [active, paused, busy, draining, saved.length, onSessionState]);
+  useEffect(() => () => diagnostics.reset("pack"), []);
+
   const important = receipts.filter((receipt) =>
     ["saved", "error", "undone"].includes(receipt.status),
   );
+  const quantityKey = (receipt: PackReceipt) =>
+    receipt.reference
+      ? `${receipt.reference.game}:${receipt.reference.identityKey || receipt.reference.key}`
+      : receipt.receiptId;
+  const sessionQuantities = new Map<string, number>();
+  for (const receipt of saved) {
+    const key = quantityKey(receipt);
+    sessionQuantities.set(key, (sessionQuantities.get(key) ?? 0) + 1);
+  }
+  const seenSaved = new Set<string>();
   const shown = showAll
     ? receipts.slice(-100).reverse()
-    : important.slice(-40).reverse();
+    : important
+        .slice()
+        .reverse()
+        .filter((receipt) => {
+          if (receipt.status !== "saved") return true;
+          const key = quantityKey(receipt);
+          if (seenSaved.has(key)) return false;
+          seenSaved.add(key);
+          return true;
+        })
+        .slice(0, 40);
   return (
     <section className="pack-scanner panel" aria-label="Pack opening scanner">
       <div className="panel-heading">
@@ -579,11 +792,23 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
             </button>
             <button className="button subtle" onClick={() => stop()}>
               <Square size={15} />
-              Stop pack
+              End session
             </button>
           </>
         )}
       </div>
+      {!active && !busy && saved.length > 0 && (
+        <p className="pack-help">
+          Starting again begins a new session. This session’s count resets only
+          when the new source is ready; your collection is kept.
+        </p>
+      )}
+      {active && (
+        <p className="pack-help">
+          Finish capture processes queued views. End session cancels pending
+          views; saved cards stay.
+        </p>
+      )}
       {error && (
         <div className="pack-error" role="alert">
           {error}
@@ -610,7 +835,7 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
               : draining
                 ? "Processing captured views"
                 : "Capturing"}{" "}
-            · {stats?.queued ?? 0} queued
+            · {(stats?.queued ?? 0) + (stats?.reservoirViews ?? 0)} queued
           </span>
         )}
         {!active && !busy && (
@@ -623,22 +848,28 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
         )}
       </div>
       <div className="pack-capture-status" aria-live="polite">
-        <strong>{saved.length} saved</strong>
+        <strong>{saved.length} saved this session</strong>
         <span>
-          {stats?.queued ?? 0} queued · {stats?.inFlight ?? 0} identifying
+          {(stats?.queued ?? 0) + (stats?.reservoirViews ?? 0)} queued ·{" "}
+          {stats?.inFlight ?? 0} identifying
         </span>
-        {stats && (
-          <span>
-            {(stats.retainedBytes / 1048576).toFixed(1)} / 48 MiB captured
-            pixels
-          </span>
-        )}
       </div>
       {!!stats?.dropped && (
         <p className="pack-warning">
-          {stats.dropped} captured views were dropped because the bounded queue
-          filled. Check the pack and rescan missed cards. A complete capture is
-          not guaranteed.
+          Capture buffer was full: {stats.dropped} views were missed. Check the
+          card count and rescan missing cards.
+        </p>
+      )}
+      {!!(
+        (stats?.backpressureRejected ?? 0) + (stats?.reservoirReplaced ?? 0)
+      ) && (
+        <p className="pack-warning" role="status">
+          The matcher could not process every captured view:{" "}
+          {(stats?.backpressureRejected ?? 0) + (stats?.reservoirReplaced ?? 0)}{" "}
+          views were omitted while retaining recent and clearer candidates. A
+          brief reveal can be missed. Check the card count and rescan missing
+          cards.
+          {!!stats?.dropped && " Capacity losses above may overlap this count."}
         </p>
       )}
       {!!stats?.expiredAcquisitions && (
@@ -651,8 +882,9 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
       <p className="pack-help">
         Saved rows are card identities. Printing, finish and condition stay
         unconfirmed, and these entries are excluded from collection valuation.
-        Repeated identical identities count once per pack; adjust quantity in
-        Collection for another indistinguishable copy.
+        Repeated frames never add another copy. If you have a second identical
+        card, choose Add another copy beside that name. Each addition can be
+        undone.
       </p>
       <button
         className="button subtle"
@@ -667,8 +899,12 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
         {shown.map((receipt) => (
           <li
             className="pack-receipt"
-            key={receipt.captureId}
+            key={receipt.receiptId}
             data-capture-id={receipt.captureId}
+            data-receipt-id={receipt.receiptId}
+            data-quantity-origin={
+              receipt.quantityConfirmation ? "user-confirmed" : "captured"
+            }
             data-status={receipt.status}
             data-source-time={receipt.sourceFrame.mediaTime}
             data-captured-at={receipt.capturedAt}
@@ -678,37 +914,68 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
             <header>
               <h4>
                 {receipt.reference?.name ?? `Captured view ${receipt.frameId}`}
+                {receipt.status === "saved" && (
+                  <span className="session-quantity">
+                    {" "}
+                    × {sessionQuantities.get(quantityKey(receipt)) ?? 1}
+                  </span>
+                )}
               </h4>
               <span className={`receipt-state ${receipt.status}`}>
                 {stateNames[receipt.status]}
               </span>
             </header>
-            <p>
-              Captured at source {seconds(receipt.sourceFrame.mediaTime)}
-              {receipt.completedAt !== undefined
-                ? ` · result ${seconds((receipt.completedAt - receipt.capturedAt) / 1000)} later`
-                : ""}
-            </p>
+            {receipt.quantityConfirmation ? (
+              <p className="copy-confirmation">
+                You added another copy ·{" "}
+                {sessionQuantities.get(quantityKey(receipt)) ?? 0} saved this
+                session
+              </p>
+            ) : (
+              <details className="receipt-provenance">
+                <summary>Captured-view details</summary>
+                <p>
+                  Captured at source {seconds(receipt.sourceFrame.mediaTime)}
+                  {receipt.completedAt !== undefined
+                    ? ` · result ${seconds((receipt.completedAt - receipt.capturedAt) / 1000)} later`
+                    : ""}
+                </p>
+              </details>
+            )}
             <p>{receipt.reason}</p>
             {receipt.reference && receipt.status === "saved" && (
               <ReferenceQuotes card={referenceCard(receipt.reference)} />
             )}
             <div className="receipt-actions">
               {receipt.status === "saved" && (
-                <button className="button subtle" onClick={() => undo(receipt)}>
-                  <Undo2 size={14} />
-                  Undo card
-                </button>
+                <>
+                  <button
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => addAnotherCopy(receipt)}
+                    aria-label={`Add another copy of ${receipt.reference?.name}`}
+                  >
+                    <Plus size={14} />
+                    Add another copy
+                  </button>
+                  <button
+                    className="button subtle"
+                    onClick={() => undo(receipt)}
+                  >
+                    <Undo2 size={14} />
+                    {showAll ? "Undo this copy" : "Undo latest copy"}
+                  </button>
+                </>
               )}
               {receipt.status === "error" && receipt.eventId && (
                 <button
                   className="button subtle"
-                  disabled={paused}
+                  disabled={paused && !receipt.quantityConfirmation}
                   onClick={() => {
                     const intent = session.current?.retry(receipt.eventId!);
                     if (intent) {
                       persist(intent);
-                      refresh();
+                      refresh(true);
                     }
                   }}
                 >
@@ -719,6 +986,18 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
           </li>
         ))}
       </ol>
+      {onFindCard &&
+        (references === 0 ||
+          error ||
+          (!active &&
+            receipts.some(
+              (receipt) =>
+                receipt.status === "review" || receipt.status === "dropped",
+            ))) && (
+          <button className="button subtle" onClick={onFindCard}>
+            Find a missed card manually
+          </button>
+        )}
       {!shown.length && (
         <p className="pack-help">
           {showAll
@@ -738,11 +1017,14 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
         <p>
           One local matcher processes a bounded queue of up to 12 views and 48
           MiB of queued/in-flight pixels. This excludes the bounded
-          capture/return buffers and model/browser memory. Similar views can be
-          omitted or replaced by clearer views. These scheduling decisions do
-          not prove identity or a separate physical copy. Finish capture drains
-          the queue; Stop cancels unsaved views. Camera disconnection and
-          changing workflows cancel the session.
+          capture/return buffers and model/browser memory. A service-time target
+          limits committed work ahead of the matcher; a two-view reservoir keeps
+          a recent view and a stronger earlier view during overload. Captured
+          views may be discarded or replaced before a receipt is created.
+          Similar views can also be omitted or replaced by clearer views. These
+          scheduling decisions do not prove identity or a separate physical
+          copy. Finish capture drains the queue; Stop cancels unsaved views.
+          Camera disconnection and changing workflows cancel the session.
         </p>
         <p>
           Local videos play at 1× and must be MP4/WebM, at most five minutes,
@@ -753,11 +1035,15 @@ export default function PackScanner({ game, onSave, onUndo, onSetup }: Props) {
         </p>
         {stats && (
           <p>
-            Views sampled: {stats.offered}; admitted: {stats.admitted}; omitted:{" "}
-            {stats.omitted}; clearer replacements: {stats.replaced}; peak
-            retained: {stats.peakRetainedViews} views /{" "}
-            {(stats.peakRetainedBytes / 1048576).toFixed(1)} MiB. These are
-            queue measurements, not recognition confidence.
+            Native captures: {stats.captured}; visually redundant:{" "}
+            {stats.preFiltered}; admitted: {stats.admitted}; downstream
+            omissions: {stats.omitted}; clearer replacements: {stats.replaced};
+            reservoir deferrals: {stats.backpressureDeferred}; promoted:{" "}
+            {stats.reservoirPromoted}; rejected by backpressure:{" "}
+            {stats.backpressureRejected}; reservoir replacements:{" "}
+            {stats.reservoirReplaced}; peak retained: {stats.peakRetainedViews}{" "}
+            views / {(stats.peakRetainedBytes / 1048576).toFixed(1)} MiB. These
+            are queue measurements, not recognition confidence.
           </p>
         )}
       </details>

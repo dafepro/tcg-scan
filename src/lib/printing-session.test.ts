@@ -77,6 +77,7 @@ function harness() {
   }));
   const isCurrent = vi.fn(() => true);
   const onStatus = vi.fn<(eventId: string, status: string) => void>();
+  const onGuidance = vi.fn<(eventId: string, message: string) => void>();
   const onDiagnostics =
     vi.fn<(eventId: string, result: PrintingResolution) => void>();
   const onResolution = vi.fn<
@@ -87,6 +88,7 @@ function harness() {
     reader,
     isCurrent,
     onStatus,
+    onGuidance,
     onDiagnostics,
     onResolution,
   });
@@ -98,6 +100,7 @@ function harness() {
     catalog,
     isCurrent,
     onStatus,
+    onGuidance,
     onDiagnostics,
     onResolution,
   };
@@ -112,6 +115,127 @@ afterEach(() => {
 });
 
 describe("printing session coordination", () => {
+  it("issues only one candidate-dependent prompt, then stops on a no-gain read", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+    await h.session.offer(frame());
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("collector number");
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("closer once");
+    expect(h.session.needs("event")).toBe(true);
+    await h.session.offer(frame(2));
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("did not establish");
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(h.onGuidance.mock.calls[0]).toEqual([
+      "event",
+      expect.stringContaining("closer once"),
+    ]);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(
+      h.onDiagnostics.mock.calls[1][1].evidence.map((value) => value.frameId),
+    ).toEqual(["frame-1", "frame-2"]);
+    expect(
+      h.onStatus.mock.calls.filter(([, value]) =>
+        value.includes("closer once"),
+      ),
+    ).toHaveLength(1);
+    h.session.dispose();
+  });
+  it("does not reset an occurrence's prompt budget on Pause/cancel", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+    await h.session.offer(frame());
+    h.session.cancel();
+    await h.session.offer(frame(2));
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(
+      h.onStatus.mock.calls.filter(([, value]) =>
+        value.includes("closer once"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      h.onDiagnostics.mock.calls[1][1].evidence.map((value) => value.frameId),
+    ).toEqual(["frame-2"]);
+    expect(h.session.needs("event")).toBe(false);
+    h.session.dispose();
+  });
+  it("preserves the baseline successful two reads after an initial empty single-candidate read", async () => {
+    const h = harness();
+    h.read.mockImplementationOnce(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+    await h.session.offer(frame());
+    expect(h.session.needs("event")).toBe(true);
+    await h.session.offer(frame(2));
+    expect(h.onResolution).not.toHaveBeenCalled();
+    await h.session.offer(frame(3));
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    expect(
+      h.onStatus.mock.calls.some(([, value]) => value.includes("closer once")),
+    ).toBe(false);
+    h.session.dispose();
+  });
+  it("stops camera requests when the remaining catalog difference is unsupported edition text", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "edition", edition: "1ST EDITION" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    await h.session.offer(frame());
+    await h.session.offer(frame(2));
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("Review it later");
+    expect(
+      h.onStatus.mock.calls.some(([, value]) =>
+        /tilt|glare|blur|closer/i.test(value),
+      ),
+    ).toBe(false);
+    h.session.dispose();
+  });
+  it("Undo of a different receipt does not cancel or mutate the active occurrence", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const active = h.session.offer(frame(1, { eventId: "active" }));
+    h.session.forget("other");
+    expect(h.session.busy).toBe(true);
+    expect(h.read.mock.calls[0][0].signal.aborted).toBe(false);
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    expect(await active).toBe(true);
+    expect(h.onDiagnostics.mock.calls[0][0]).toBe("active");
+    h.session.dispose();
+  });
+  it("a diagnostic callback that cancels the encounter cannot publish a prompt or update a receipt", async () => {
+    const h = harness();
+    h.onDiagnostics.mockImplementation(() => h.session.cancel());
+    const before = h.onStatus.mock.calls.length;
+    expect(await h.session.offer(frame())).toBe(false);
+    expect(h.onStatus.mock.calls).toHaveLength(before + 1);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
   it("reads one frame without resolving, then saves exactly once after two independent frames", async () => {
     const h = harness();
     expect(await h.session.offer(frame())).toBe(true);

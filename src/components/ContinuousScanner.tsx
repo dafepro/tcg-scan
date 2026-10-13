@@ -54,6 +54,7 @@ import {
 } from "../lib/pokemon-reference-release";
 import { referenceCard } from "../lib/scan-inventory";
 import { ReferenceQuotes } from "./ReferenceQuotes";
+import { PrintingEvidenceDetails } from "./PrintingEvidenceDetails";
 import {
   cameraFailureMessage,
   scannerTrackPresentation,
@@ -97,6 +98,8 @@ type Saved = {
   undone?: boolean;
   printingStatus?: string;
   printingReference?: ReferenceMetadata;
+  /** Bounded text/measurements only, retired with this receipt or Undo. */
+  printingResolution?: PrintingResolution;
 };
 const EMPTY: VisionCoverage = {
   totalReferences: 0,
@@ -372,12 +375,14 @@ export default function ContinuousScanner({
   }
   function undoSaved(item: Saved) {
     if (item.undone || receiptEvents.current.get(item.eventId) !== true) return;
-    printing.current?.forget(item.eventId);
     const failure = callbacks.current.onUndo(item.eventId);
     if (failure) {
       setError(failure);
       return;
     }
+    // onUndo is synchronous: retire work before yielding, but do not reset
+    // the existing prompt budget when durable removal fails.
+    printing.current?.forget(item.eventId);
     session.current?.undo(item.eventId);
     setTracks((old) =>
       old.map((track) =>
@@ -388,7 +393,14 @@ export default function ContinuousScanner({
     );
     setSaved((old) =>
       old.map((entry) =>
-        entry.eventId === item.eventId ? { ...entry, undone: true } : entry,
+        entry.eventId === item.eventId
+          ? {
+              ...entry,
+              undone: true,
+              printingResolution: undefined,
+              printingStatus: undefined,
+            }
+          : entry,
       ),
     );
     receiptEvents.current.set(item.eventId, false);
@@ -400,12 +412,28 @@ export default function ContinuousScanner({
     printing.current?.dispose();
     printing.current = new PrintingSession({
       catalog: getPrintingCandidates,
-      onDiagnostics: (_eventId, resolution) =>
+      onDiagnostics: (eventId, resolution) => {
+        if (
+          gen !== generation.current ||
+          receiptEvents.current.get(eventId) !== true
+        )
+          return;
         diagnostics.record(
           "printing",
           "scan",
           printingDiagnosticFields(resolution),
-        ),
+        );
+        setSaved((old) =>
+          gen !== generation.current ||
+          receiptEvents.current.get(eventId) !== true
+            ? old
+            : old.map((item) =>
+                item.eventId === eventId && !item.undone
+                  ? { ...item, printingResolution: resolution }
+                  : item,
+              ),
+        );
+      },
       isCurrent: (f) =>
         gen === generation.current &&
         running.current &&
@@ -420,24 +448,53 @@ export default function ContinuousScanner({
               t.counted &&
               t.reference?.name === f.reference.name,
           ),
+      onGuidance: (eventId, message) => {
+        if (
+          gen !== generation.current ||
+          receiptEvents.current.get(eventId) !== true
+        )
+          return;
+        const track = session.current
+          ?.snapshot()
+          .find((item) => item.eventId === eventId);
+        if (track?.reference) announce(`${track.reference.name}. ${message}`);
+      },
       onStatus: (eventId, status) =>
         setSaved((old) =>
-          old.map((item) =>
-            item.eventId === eventId && !item.undone
-              ? { ...item, printingStatus: status }
-              : item,
-          ),
+          gen !== generation.current ||
+          receiptEvents.current.get(eventId) !== true
+            ? old
+            : old.map((item) =>
+                item.eventId === eventId && !item.undone
+                  ? { ...item, printingStatus: status }
+                  : item,
+              ),
         ),
       onResolution: (eventId, resolution) => {
+        if (
+          gen !== generation.current ||
+          !running.current ||
+          pausedRef.current ||
+          receiptEvents.current.get(eventId) !== true ||
+          resolution.evidence.some(
+            (observation) =>
+              observation.eventId !== eventId ||
+              observation.sessionId !== session.current?.id,
+          )
+        )
+          return "Printing read cancelled. Saved identity is unchanged.";
         const failure = callbacks.current.onPrinting(eventId, resolution);
         if (!failure) {
           printedEvents.current.add(eventId);
           setSaved((old) =>
-            old.map((item) =>
-              item.eventId === eventId && !item.undone
-                ? { ...item, printingReference: resolution.reference }
-                : item,
-            ),
+            gen !== generation.current ||
+            receiptEvents.current.get(eventId) !== true
+              ? old
+              : old.map((item) =>
+                  item.eventId === eventId && !item.undone
+                    ? { ...item, printingReference: resolution.reference }
+                    : item,
+                ),
           );
         }
         return failure;
@@ -2106,6 +2163,11 @@ export default function ContinuousScanner({
                     Read catalog: {item.printingReference.setName} ·{" "}
                     {item.printingReference.number}
                   </small>
+                )}
+                {!item.undone && item.printingResolution && (
+                  <PrintingEvidenceDetails
+                    resolution={item.printingResolution}
+                  />
                 )}
                 {!item.undone && (
                   <ReferenceQuotes

@@ -1,0 +1,58 @@
+.printing-evidence-details {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.printing-evidence-details summary {
+  min-height: 44px;
+  padding: 11px 0;
+  cursor: pointer;
+  color: var(--text);
+}
+.printing-evidence-details summary:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.printing-evidence-content {
+  min-width: 0;
+  padding: 0 0 8px;
+  border-top: 1px solid var(--border);
+}
+.printing-evidence-content p {
+  margin: 8px 0;
+}
+.printing-evidence-content section + section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.printing-evidence-content ul,
+.printing-evidence-content ol {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+.printing-evidence-content dl {
+  margin: 8px 0;
+}
+.printing-evidence-content dt {
+  color: var(--muted);
+}
+.printing-evidence-content dd {
+  margin: 0 0 6px;
+}
+.printing-evidence-content .printing-evidence-literal {
+  white-space: pre-wrap;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface, var(--panel));
+  font-family: ui-monospace, monospace;
+}
+.printing-evidence-regions > li + li {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}

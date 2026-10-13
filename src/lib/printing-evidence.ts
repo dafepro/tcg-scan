@@ -71,7 +71,11 @@ export async function catalogProvenance(input: {
 }): Promise<PrintingCatalogProvenance> {
   const rows = input.candidates
     .map((row) => [
-      row.key,
+      // YGOPRODeck's adapter adds an array position for unique resolver keys.
+      // Provider row order is not physical identity; retain the stable ID/code/rarity.
+      row.game === "yugioh"
+        ? row.key.replace(/^(yugioh:\d{1,8}:set:[^:]+:[^:]+):\d+$/, "$1")
+        : row.key,
       row.game,
       row.name,
       row.identityKey ?? null,
@@ -84,7 +88,7 @@ export async function catalogProvenance(input: {
       row.setName ?? null,
       row.sourceUrl ?? null,
     ])
-    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), "en"));
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b), "en"));
   const bytes = new TextEncoder().encode(
     JSON.stringify([1, input.provider, input.scope, rows]),
   );

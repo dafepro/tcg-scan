@@ -16,6 +16,9 @@ import { listLearnedPacks } from "../lib/learned-packs";
 import { PackCaptureLoop } from "../lib/pack-capture";
 import type { PackCaptureStats } from "../lib/pack-capture";
 import { PackSession } from "../lib/pack-session";
+import { PackPrintingSession } from "../lib/pack-printing-session";
+import type { PackPrintingUpdate } from "../lib/pack-printing-session";
+import { PrintingEvidenceDetails } from "./PrintingEvidenceDetails";
 import type { PackReceipt, PackSaveIntent } from "../lib/pack-session";
 import { cameraFailureMessage } from "./continuous-scanner-ui";
 import { referenceCard, type ScanSaveOptions } from "../lib/scan-inventory";
@@ -100,6 +103,7 @@ export default function PackScanner({
   const client = useRef<VisionClient | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const session = useRef<PackSession | null>(null);
+  const printing = useRef<PackPrintingSession | null>(null);
   const sourceUrl = useRef<string | null>(null);
   const saveError = useRef<string | null>(null);
   const preparation = useRef<AbortController | null>(null);
@@ -127,6 +131,11 @@ export default function PackScanner({
   const [prunedReceipts, setPrunedReceipts] = useState(0);
   const [stats, setStats] = useState<PackCaptureStats>();
   const [showAll, setShowAll] = useState(false);
+  // Opt-in until genuine public-video occurrence/throughput parity is measured.
+  const [printingEnabled, setPrintingEnabled] = useState(false);
+  const [printingUpdates, setPrintingUpdates] = useState<
+    Record<string, PackPrintingUpdate>
+  >({});
   const [mediaSize, setMediaSize] = useState({ width: 1280, height: 720 });
   const latestStats = useRef<PackCaptureStats | undefined>(undefined);
   const snapshotWork = useRef({ count: 0, totalMs: 0, maxMs: 0 });
@@ -160,7 +169,11 @@ export default function PackScanner({
   const refresh = useCallback((immediate = false) => {
     presentation.current?.request(immediate);
   }, []);
-  const release = useCallback((cancel: boolean) => {
+  const release = useCallback((cancel: boolean, retainPrinting = false) => {
+    if (!retainPrinting) {
+      printing.current?.dispose();
+      printing.current = null;
+    }
     generation.current++;
     controlEpoch.current++;
     presentation.current?.cancel();
@@ -239,6 +252,8 @@ export default function PackScanner({
   }, [game, release]);
   useEffect(() => {
     const hidden = () => {
+      // Natural drain may leave only the optional receipt-bound reader active.
+      if (document.hidden) printing.current?.cancel();
       if (document.hidden && busyRef.current) {
         stop(
           "Preparation cancelled while the tab was hidden. Start again when ready.",
@@ -246,6 +261,7 @@ export default function PackScanner({
       } else if (document.hidden && loop.current) {
         controlEpoch.current++;
         loop.current.pause();
+        printing.current?.cancel();
         pausedRef.current = true;
         setPaused(true);
         if (kindRef.current === "video") video.current?.pause();
@@ -273,6 +289,12 @@ export default function PackScanner({
       failure = errorText(error);
     }
     current.acknowledge(intent.eventId, failure);
+    if (!failure && !intent.quantityConfirmation) {
+      const receipt = current
+        .snapshot()
+        .find((item) => item.receiptId === intent.receiptId);
+      if (receipt) printing.current?.confirmSaved(receipt);
+    }
     if (failure) {
       saveError.current = failure;
       setError(failure);
@@ -393,6 +415,31 @@ export default function PackScanner({
         throw new Error(
           "No learned references for this game are ready. Install the database first.",
         );
+      const refinement = printingEnabled
+        ? new PackPrintingSession({
+            isSaved: (receipt) =>
+              session.current === s &&
+              !pausedRef.current &&
+              s
+                .snapshot()
+                .some(
+                  (item) =>
+                    item.receiptId === receipt.receiptId &&
+                    item.eventId === receipt.eventId &&
+                    item.status === "saved" &&
+                    !item.quantityConfirmation,
+                ),
+            onUpdate: (update) => {
+              if (printing.current !== refinement || session.current !== s)
+                return;
+              setPrintingUpdates((previous) => ({
+                ...previous,
+                [update.receiptId]: update,
+              }));
+            },
+          })
+        : null;
+      printing.current = refinement;
       const capture = new PackCaptureLoop({
         video: element,
         client: local,
@@ -400,6 +447,9 @@ export default function PackScanner({
         sessionId: s.sessionId,
         sourceId: crypto.randomUUID(),
         frameLimit: 1920,
+        requestPrintingCrop: refinement
+          ? (view) => refinement.requestCrop(view)
+          : undefined,
         onQueued: (view) => {
           if (current()) {
             s.queue(view);
@@ -427,6 +477,13 @@ export default function PackScanner({
             true,
           );
           for (const intent of intents) persist(intent);
+          // Only the exact original receipt is eligible. Duplicate-name results
+          // carry the old eventId but cannot contribute another observation.
+          refinement?.acceptResult(
+            view,
+            result,
+            s.snapshot().find((item) => item.receiptId === view.captureId),
+          );
           diagnostics.record("pack", "scan", {
             width: result.width,
             height: result.height,
@@ -459,7 +516,9 @@ export default function PackScanner({
         },
         onDrained: () => {
           if (current()) {
-            release(false);
+            // Natural drain ends identity capture, not a receipt-bound read.
+            // Explicit End, Pause, Undo, and another source still invalidate it.
+            release(false, true);
             setBusy(false);
             setActive(false);
             setPaused(false);
@@ -485,6 +544,7 @@ export default function PackScanner({
       snapshotWork.current = { count: 0, totalMs: 0, maxMs: 0 };
       setStats(undefined);
       setReceipts([]);
+      setPrintingUpdates({});
       setPrunedReceipts(0);
       setShowAll(false);
       busyRef.current = false;
@@ -527,6 +587,7 @@ export default function PackScanner({
     if (!pausedRef.current) {
       controlEpoch.current++;
       target.pause();
+      printing.current?.cancel();
       pausedRef.current = true;
       setPaused(true);
       if (kindRef.current === "video") video.current?.pause();
@@ -559,11 +620,18 @@ export default function PackScanner({
   }
   function undo(receipt: PackReceipt) {
     if (!receipt.eventId) return;
+    // Cancel pending optional work before a potentially successful removal.
+    printing.current?.cancel();
     try {
       const error = callbacks.current.onUndo(receipt.eventId);
       if (error) setError(error);
       else {
         session.current?.undo(receipt.eventId);
+        setPrintingUpdates((previous) => {
+          const next = { ...previous };
+          delete next[receipt.receiptId];
+          return next;
+        });
         refresh(true);
       }
     } catch (error) {
@@ -735,6 +803,28 @@ export default function PackScanner({
           Set up reference database
         </button>
       )}
+      <details className="pack-printing-options">
+        <summary>Optional printed-text read</summary>
+        <label>
+          <input
+            type="checkbox"
+            checked={printingEnabled}
+            disabled={active || busy}
+            onChange={(event) => {
+              setPrintingEnabled(event.target.checked);
+              if (!event.target.checked) printing.current?.cancel();
+            }}
+          />
+          Read a retained native capture after saving (experimental)
+        </label>
+        <p>
+          Off by default while throughput is being tested. Extra image
+          preparation and local text reading may slow capture. Each read belongs
+          only to its original receipt, even after the card leaves. One view
+          cannot confirm printing, finish, condition, or value. Change this
+          before starting.
+        </p>
+      </details>
       <div className="pack-actions">
         {!active && !busy && (
           <>
@@ -943,6 +1033,40 @@ export default function PackScanner({
               </details>
             )}
             <p>{receipt.reason}</p>
+            {receipt.status === "saved" &&
+              !receipt.quantityConfirmation &&
+              printingUpdates[receipt.receiptId] && (
+                <div className="pack-printing-evidence">
+                  <p role="status">
+                    {printingUpdates[receipt.receiptId].status}
+                  </p>
+                  {printingUpdates[receipt.receiptId].status.startsWith(
+                    "Reading ",
+                  ) && (
+                    <button
+                      className="button subtle"
+                      onClick={() => printing.current?.cancel()}
+                    >
+                      Cancel text read
+                    </button>
+                  )}
+                  {printingUpdates[receipt.receiptId].resolution && (
+                    <>
+                      <PrintingEvidenceDetails
+                        resolution={
+                          printingUpdates[receipt.receiptId].resolution
+                        }
+                      />
+                      <p>
+                        One original capture, including all its crops, is one
+                        observation. A later same-name card is not evidence for
+                        this copy. Further reading needs explicit or proven
+                        same-copy association.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
             {receipt.reference && receipt.status === "saved" && (
               <ReferenceQuotes card={referenceCard(receipt.reference)} />
             )}
@@ -1014,6 +1138,13 @@ export default function PackScanner({
       )}
       <details>
         <summary>Capture limits and counting</summary>
+        <p>
+          Optional printed-text reading retains at most one crop (4.93 MiB),
+          requests at most 30 crops per session at intervals of at least 1.5
+          seconds, and expires a capture after 40 seconds. It uses one separate
+          local reader; its bounded temporary images and model memory are
+          additional. No capture pixels are stored in your collection.
+        </p>
         <p>
           One local matcher processes a bounded queue of up to 12 views and 48
           MiB of queued/in-flight pixels. This excludes the bounded

@@ -302,6 +302,24 @@ describe("persistent learned engine lazy access and lifecycle", () => {
     await f.engine.dispose();
   });
 
+  it("preserves verified identity when optional native crop preparation throws", async () => {
+    const f = await fixture(), input = cv.matFromImageData(f.image), resized = new cv.Mat();
+    cv.resize(input, resized, new cv.Size(f.image.width * 3, f.image.height * 3));
+    const image = { width: resized.cols, height: resized.rows, data: new Uint8ClampedArray(resized.data) } as ImageData;
+    input.delete(); resized.delete();
+    const current = quad(600, 270, 717, 1005); f.models.propose = async () => [current];
+    const baseline = await f.engine.analyze(image, { mode: "pack" });
+    const crop = vi.spyOn(VisionEngine.prototype, "preparePrintingCrop").mockImplementation(() => { throw new Error("Injected optional allocation failure"); });
+    try {
+      const result = await f.engine.analyze(image, { mode: "pack", includePrintingCrops: true, maxPrintingCrops: 1 });
+      expect(crop).toHaveBeenCalledOnce();
+      expect(result.detections[0].autoEligible).toBe(true);
+      expect(result.detections[0].candidates).toEqual(baseline.detections[0].candidates);
+      expect(result.detections[0].printingCrop).toBeUndefined();
+      expect(result.detections[0].printingSourceMinEdge).toBeUndefined();
+    } finally { crop.mockRestore(); await f.engine.dispose(); }
+  });
+
   it("keeps separate physical copies and caps requested printing crops at2", async () => {
     const f = await fixture(), input = cv.matFromImageData(syntheticCard(1)), resized = new cv.Mat();
     cv.resize(input, resized, new cv.Size(720, 1008));

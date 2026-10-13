@@ -4,7 +4,7 @@
 
 `planPrintingGuidance` is a pure advisory policy. Its output is one next step: `read`, `prompt`, `wait`, or `partial`. It cannot eliminate candidates, accept a physical version, change identity/save/recognition gates, change a saved occurrence, choose a quote, or accept price as an input. A completed camera prompt is not evidence that a version is confirmed. An adequate region is permission to schedule its reviewed reader, not permission to accept the reader's result.
 
-The default discriminator registry is **empty**. No Pokémon polarity, MTG premium/reprint marker, Yu-Gi-Oh! rarity, stamp, symbol, foil, or backside detector is shipped or enabled by this module. Callers may inject reviewed, physically validated rules for a specified reader/model and supported evaluation slice. Unit-test rules are synthetic fixtures and are not claims of calibrated detectors. This module is not wired into the live session; generic native-footer quality diagnostics can be integrated independently without activating candidate-specific rules.
+The default discriminator registry is **empty**. No Pokémon polarity, MTG premium/reprint marker, Yu-Gi-Oh! rarity, stamp, symbol, foil, or backside detector is shipped or enabled by this module. Callers may inject reviewed, physically validated rules for a specified reader/model and supported evaluation slice. Unit-test rules are synthetic fixtures and are not claims of calibrated detectors. This general rule planner remains unwired. The separate narrow literal-text advisory described below is active in the live printing session; it does not register or validate any physical discriminator rule.
 
 There is no real-user or physical-interaction evidence that these prompts improve recognition, completion time, or abandonment. Deterministic tests establish policy behavior only. Real physical detector tests, expected-absence tests, and frozen held-out interaction evaluation are prerequisites to shipping active rules.
 
@@ -40,3 +40,74 @@ The caller must reject late worker responses and own cancellation/deadline enfor
 ## Evidence basis
 
 The design follows the accompanying candidate-specific guidance policy and exact-version acceptance scenarios. [Branson et al. (ECCV 2010)](https://authors.library.caltech.edu/records/gzd73-r9f52) and [Du et al. (ICCV 2023)](https://openaccess.thecvf.com/content/ICCV2023/papers/Du_Multi-View_Active_Fine-Grained_Visual_Recognition_ICCV_2023_paper.pdf) motivate studying informative interactions and view selection; neither validates this phone-card interaction. [Tesseract's image-quality guidance](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html) motivates region-specific native reading, without establishing thresholds for this implementation.
+
+## Active narrow literal-text advisory
+
+`planPrintingLiteralGuidance` (`literal-guidance-v1`) is a separate, bounded
+advisory for the existing literal reader. It replaces the live receipt's generic
+“hold a clear close-up” loop without claiming that any general physical rule is
+validated. `DEFAULT_PRINTING_DISCRIMINATORS` remains empty.
+
+- An actual local read must have completed. A request is possible only when two
+  compatible catalog records have different **known** values for a still-unread
+  collector number, printed total, printed set code or literal language marker.
+  Missing metadata never means an absent feature. Compatibility is used only to
+  choose advice; the independent resolver receives the unchanged catalog.
+- Pokémon/Magic advice names the bottom identifier line. Yu-Gi-Oh advice names
+  the set-code line below the artwork. These are the existing broad reader zones,
+  not newly detected character boxes or guaranteed template coverage.
+- The message asks for that line closer **once** and says which text could
+  separate catalog matches. This is an acquisition suggestion, not a diagnosis
+  that the prior crop is blurred, glared or too small. Pixel energy/clipping
+  statistics do not influence the request and are not calibrated readability
+  measurements.
+- Conflicting literals, known catalog conflicts, missing necessary catalog
+  fields and unsupported remaining edition/stamp/finish distinctions lead to
+  review. No symbol, foil, backside, language-model inference or repaired text is
+  introduced. Unknown physical alternatives remain unknown.
+- There is at most one explicit request per saved occurrence. A no-gain next
+  read stops that request. Pause/cancellation cannot restore the prompt budget.
+  A session remembers at most 2,500 prompted event IDs; after that bound no more
+  prompts are issued. These records contain no images.
+- A useful first read can still wait for the baseline second original capture,
+  including when there is only one catalog candidate. An initially empty
+  single-candidate read or transient unavailable catalog keeps the prior bounded
+  passive retry path (at most six offers between evidence resets, 1.5 seconds
+  apart). No request is issued just to fill this retry budget. Crops/resizes and
+  repeated source pixels retain the existing non-independent lineage rules.
+- Review may stop optional printing reads but never changes identity acceptance,
+  saved quantity, finish, condition, price eligibility or collection totals.
+
+There is still no measured physical-user benefit or calibrated quality diagnosis.
+The existing literal parser, reader configuration, resolver thresholds and
+catalog-printing acceptance are unchanged.
+
+## Receipt evidence disclosure and lifecycle
+
+`PrintingEvidenceDetails` accepts a live `PrintingResolution`, persisted
+`PersistedPrintingEvidence`, or both. The default native `<details>` control is
+collapsed and keyboard accessible. A live result is explicitly a local read,
+not a durable-save claim; saved evidence is labeled separately and remains a
+historical snapshot. The component does not fetch, store, mutate inventory or
+render camera images.
+
+Available detail includes unresolved reasons, uncorrected escaped literal OCR,
+normalized fields, original capture/session/fingerprint lineage, configured
+reader version, actual rectified region dimensions and reader-input dimensions,
+original source short edge, descriptive pixel measurements, and catalog
+provider/scope/fetch/snapshot information. Missing historical metadata is stated
+explicitly. Pixel measurements do not prove blur, glare, readability or absence.
+
+Live retains diagnostics only with its latest 30 receipts, at most eight reads
+and two text regions per read. Undo clears that receipt's transient diagnostics
+only after durable removal succeeds; a new session replaces the old receipt list
+only after source permission/playback/matcher readiness. Pause/end preserve
+already-reported historical details but cancel in-flight work. Event/generation
+and durable-receipt guards prevent late callbacks from updating another receipt.
+Undo of a different receipt does not interrupt the active event's read.
+
+Unit tests cover candidate-dependent literal selection, missing metadata,
+unsupported distinctions, original-capture agreement, prompt/no-gain budgets,
+Pause/Undo cancellation, mutable diagnostics isolation, HTML escaping and bounded
+rendered evidence. Browser accessibility/layout and real physical capture
+interaction require separate verification; unit fixtures do not establish them.

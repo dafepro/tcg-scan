@@ -9,7 +9,7 @@ import {
   CaptureFrameExpiredError,
   CaptureFreshnessError,
 } from "./frame-capture";
-import type { VisionResult } from "./vision";
+import type { VisionResult, VisionOptions } from "./vision";
 
 function capture(
   frame: number,
@@ -621,7 +621,12 @@ describe("adaptive pack backlog and latest/best reservoir", () => {
   });
 });
 
-function loopHarness(withTrack = false) {
+function loopHarness(
+  withTrack = false,
+  requestPrintingCrop?: ConstructorParameters<
+    typeof PackCaptureLoop
+  >[0]["requestPrintingCrop"],
+) {
   const video = new EventTarget() as HTMLVideoElement;
   Object.defineProperty(video, "ended", { value: false, writable: true });
   const track = Object.assign(new EventTarget(), {
@@ -639,15 +644,18 @@ function loopHarness(withTrack = false) {
   const client = {
     busy: false,
     takeFrameBuffer: vi.fn((bytes: number) => new ArrayBuffer(bytes)),
-    analyze: vi.fn(async (image: CapturedPixels["image"]) => {
-      client.busy = true;
-      structuredClone(image.data.buffer, { transfer: [image.data.buffer] });
-      const value = await new Promise<VisionResult>((resolve) => {
-        pending = resolve;
-      });
-      client.busy = false;
-      return value;
-    }),
+    analyze: vi.fn(
+      async (image: CapturedPixels["image"], _options?: VisionOptions) => {
+        void _options;
+        client.busy = true;
+        structuredClone(image.data.buffer, { transfer: [image.data.buffer] });
+        const value = await new Promise<VisionResult>((resolve) => {
+          pending = resolve;
+        });
+        client.busy = false;
+        return value;
+      },
+    ),
   };
   const source = {
     minimumIntervalMs: 120 as const,
@@ -683,6 +691,7 @@ function loopHarness(withTrack = false) {
     sourceId: "camera",
     frameLimit: 1920,
     capture: source,
+    requestPrintingCrop,
     now: () => time,
     ...callbacks,
   });
@@ -696,9 +705,9 @@ function loopHarness(withTrack = false) {
     setTime: (value: number) => {
       time = value;
     },
-    resolve: () => {
+    resolve: (value = result()) => {
       time += 50;
-      pending?.(result());
+      pending?.(value);
     },
   };
 }
@@ -1332,6 +1341,80 @@ describe("separate pack capture lifecycle", () => {
       admitted: 1,
     });
     expect(h.callbacks.onError).not.toHaveBeenCalled();
+    h.loop.dispose();
+  });
+});
+
+describe("optional Pack native printing crop admission", () => {
+  it("adds no printing options or work by default", async () => {
+    vi.useFakeTimers();
+    const h = loopHarness();
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.client.analyze.mock.calls[0][1]).toEqual({
+      mode: "pack",
+      game: undefined,
+      budgetMs: 750,
+    });
+    h.loop.dispose();
+    h.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  it("requests one maximum crop only when admission reserves capacity", async () => {
+    vi.useFakeTimers();
+    const admission = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const h = loopHarness(false, admission);
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(125);
+    expect(h.client.analyze.mock.calls[0][1]).toMatchObject({
+      includePrintingCrops: true,
+      maxPrintingCrops: 1,
+    });
+    expect(admission.mock.calls[0][0].captureId).toBe("pack:capture:1");
+    h.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.client.analyze.mock.calls[1][1]).not.toHaveProperty(
+      "includePrintingCrops",
+    );
+    h.loop.dispose();
+    h.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  it("optional admission failure does not interrupt the primary identity worker", async () => {
+    vi.useFakeTimers();
+    const h = loopHarness(false, () => {
+      throw new Error("Optional module unavailable");
+    });
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.client.analyze).toHaveBeenCalledOnce();
+    h.resolve();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.callbacks.onResult).toHaveBeenCalledOnce();
+    expect(h.callbacks.onError).not.toHaveBeenCalled();
+    h.loop.dispose();
+  });
+  it("Pause discards pending optional crop while preserving the original identity result", async () => {
+    vi.useFakeTimers();
+    const h = loopHarness(false, () => true);
+    const output = result();
+    output.detections = [
+      {
+        printingCrop: { width: 480, height: 672 } as ImageData,
+        printingSourceMinEdge: 480,
+      },
+    ] as VisionResult["detections"];
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(1);
+    h.loop.pause();
+    h.resolve(output);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(h.callbacks.onResult).not.toHaveBeenCalled();
+    h.loop.resume();
+    expect(h.callbacks.onResult).toHaveBeenCalledOnce();
+    expect(h.callbacks.onResult.mock.calls[0][1]).toBe(output);
+    expect(output.detections[0].printingCrop).toBeUndefined();
+    expect(output.detections[0].printingSourceMinEdge).toBeUndefined();
     h.loop.dispose();
   });
 });

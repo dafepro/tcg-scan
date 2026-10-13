@@ -666,6 +666,8 @@ interface PackLoopDependencies {
   sourceId: string;
   frameLimit: number;
   game?: VisionGame;
+  /** Optional admission reservation; default skips all printing crop work. */
+  requestPrintingCrop?(view: PackCaptureIdentity): boolean;
   onQueued(view: PackCaptureIdentity): void;
   onIdentifying?(view: PackCaptureIdentity, startedAt: number): void;
   onOmitted(captureId: string, reason: PackOmissionReason): void;
@@ -940,11 +942,29 @@ export class PackCaptureLoop {
         this.dependencies.onQueued(view);
       this.dependencies.onIdentifying?.(lease.view, lease.startedAt);
       this.emit();
+      const cropEpoch = this.captureEpoch;
+      let includePrintingCrops = false;
+      try {
+        includePrintingCrops =
+          this.dependencies.requestPrintingCrop?.(lease.view) === true;
+      } catch {
+        /* Optional admission must never fail identity processing. */
+      }
       const result = await this.dependencies.client.analyze(lease.image, {
         mode: "pack",
         game: this.dependencies.game,
         budgetMs: 750,
+        ...(includePrintingCrops
+          ? { includePrintingCrops: true, maxPrintingCrops: 1 }
+          : {}),
       });
+      // Pause invalidates optional pixels even when identity delivery waits for
+      // Resume. The original identity receipt is still allowed to finish.
+      if (cropEpoch !== this.captureEpoch)
+        for (const detection of result.detections) {
+          delete detection.printingCrop;
+          delete detection.printingSourceMinEdge;
+        }
       if (this.disposed || !this.queue.isCurrent(lease)) return;
       const completedAt = this.now();
       this.queue.recordProcessed(lease, completedAt);

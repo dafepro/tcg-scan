@@ -354,8 +354,14 @@ export class LearnedVisionEngine {
         }
         if (!options.printingRegions?.length) selected.push(...eligible.slice(0, limit));
         for (const detection of selected) {
-          const crop = this.preprocessing.preparePrintingCrop(source, detection.quad);
-          if (crop) { detection.printingCrop = crop.image; detection.printingSourceMinEdge = crop.sourceMinEdge; }
+          try {
+            const crop = this.preprocessing.preparePrintingCrop(source, detection.quad);
+            if (crop) { detection.printingCrop = crop.image; detection.printingSourceMinEdge = crop.sourceMinEdge; }
+          } catch {
+            // Optional native text pixels cannot discard an already-completed
+            // identity result. Matching errors still fail closed below.
+            delete detection.printingCrop; delete detection.printingSourceMinEdge;
+          }
         }
       }
       result.scheduling!.processedGroups = result.detections.filter(d => !d.deferred).length; result.scheduling!.deferredGroups = result.detections.filter(d => d.deferred).length;

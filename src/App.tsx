@@ -44,6 +44,7 @@ import Scanner from "./components/Scanner";
 import ContinuousScanner from "./components/ContinuousScanner";
 import PackScanner from "./components/PackScanner";
 import { ReferenceQuotes } from "./components/ReferenceQuotes";
+import { PrintingEvidenceDetails } from "./components/PrintingEvidenceDetails";
 import {
   addScanEvent,
   undoScanEvent,
@@ -1529,6 +1530,11 @@ function CollectionView({
                       {entry.printingRead.number}. Still unconfirmed:{" "}
                       {entry.printingRead.unconfirmed.join(", ")}.
                     </p>
+                  )}
+                  {entry.printingRead?.evidence && (
+                    <PrintingEvidenceDetails
+                      evidence={entry.printingRead.evidence}
+                    />
                   )}
                   <div className="collection-meta">
                     <span>{entry.condition}</span>

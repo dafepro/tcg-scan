@@ -1,3 +1,7 @@
+import {
+  planPrintingLiteralGuidance,
+  PRINTING_LITERAL_GUIDANCE_LIMITS,
+} from "./printing-literal-guidance";
 import type { ReferenceMetadata } from "./vision/types";
 import type { PrintingCatalogProvenance } from "./printing-evidence";
 import {
@@ -41,6 +45,8 @@ interface Dependencies {
   reader?: () => PrintingReader;
   isCurrent(frame: PrintingFrame): boolean;
   onStatus(eventId: string, status: string): void;
+  /** Announces the one actionable camera request, never routine reader progress. */
+  onGuidance?(eventId: string, message: string): void;
   /** Bounded unresolved reasons and native region measurements, including reads
    * that do not qualify for onResolution. Reporting cannot affect acceptance. */
   onDiagnostics?(eventId: string, result: PrintingResolution): void;
@@ -50,6 +56,10 @@ interface Dependencies {
 export class PrintingSession {
   private reader?: PrintingReader;
   private controller?: AbortController;
+  private activeEventId?: string;
+  /** No pixels. Keep the advisory budget through Pause/cancel; bound the session. */
+  private promptedEvents = new Map<string, string>();
+  private promptBudgetSaturated = false;
   private events = new Map<string, EventState>();
   private generation = 0;
   private disposed = false;
@@ -78,14 +88,25 @@ export class PrintingSession {
     this.reader?.dispose();
     this.reader = undefined;
     this.events.clear();
+    this.activeEventId = undefined;
   }
   forget(eventId: string) {
     this.events.delete(eventId);
-    this.cancel();
+    this.promptedEvents.delete(eventId);
+    // Undo of a different receipt must not cancel another occurrence's reader.
+    if (this.activeEventId === eventId) {
+      this.generation++;
+      this.controller?.abort();
+      this.controller = undefined;
+      this.reader?.dispose();
+      this.reader = undefined;
+      this.activeEventId = undefined;
+    }
   }
   dispose() {
     this.disposed = true;
     this.cancel();
+    this.promptedEvents.clear();
   }
   async offer(frame: PrintingFrame): Promise<boolean> {
     if (
@@ -114,6 +135,7 @@ export class PrintingSession {
     const controller = new AbortController(),
       generation = this.generation;
     this.controller = controller;
+    this.activeEventId = frame.eventId;
     const current = () =>
       !this.disposed &&
       !controller.signal.aborted &&
@@ -121,6 +143,7 @@ export class PrintingSession {
       this.dependencies.isCurrent(frame);
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const status = (message: string) => {
+      if (!current()) return;
       try {
         this.dependencies.onStatus(frame.eventId, message);
       } catch {
@@ -189,14 +212,52 @@ export class PrintingSession {
           failure ??
             "Printed catalog identifiers read. Edition, finish and condition may still be unconfirmed.",
         );
-      } else
+      } else {
+        const guidance = planPrintingLiteralGuidance({
+          game: frame.reference.game,
+          candidates: catalog.candidates,
+          catalogCompleteForIdentity: catalog.catalogCompleteForIdentity,
+          resolution,
+          promptsIssued:
+            this.promptBudgetSaturated ||
+            this.promptedEvents.get(frame.eventId) === frame.sessionId
+              ? PRINTING_LITERAL_GUIDANCE_LIMITS.promptsPerEvent
+              : 0,
+        });
+        if (guidance.action === "prompt") {
+          this.promptedEvents.set(frame.eventId, frame.sessionId);
+          if (
+            this.promptedEvents.size >=
+            PRINTING_LITERAL_GUIDANCE_LIMITS.rememberedEvents
+          )
+            this.promptBudgetSaturated = true;
+          try {
+            this.dependencies.onGuidance?.(frame.eventId, guidance.message);
+          } catch {
+            /* Accessibility reporting cannot alter reader or evidence ownership. */
+          }
+          if (!current()) return false;
+        }
+        // Review stops optional camera work only. It cannot change identity,
+        // quantity, the independent evidence resolver, or stored metadata.
+        // Transient unavailable catalogs and initially empty single-candidate
+        // reads retain the existing bounded passive retry path. No camera prompt
+        // is needed merely to preserve the baseline two-capture resolver.
+        if (
+          guidance.action === "review" &&
+          guidance.reason !== "catalog-unavailable" &&
+          (guidance.reason !== "no-supported-literal-disagreement" ||
+            resolution.reasons.includes("printing-or-variant-ambiguous"))
+        )
+          event.done = true;
         status(
           catalog.error
             ? "Printing lookup unavailable. Identity remains saved."
             : event.attempts >= 6
-              ? "Printing remains unconfirmed. Move closer or review it later."
-              : "Identity saved. Hold a clear close-up for another printed-number read.",
+              ? "Printing remains unconfirmed. No more automatic reads for this occurrence; review it later."
+              : guidance.message,
         );
+      }
       return true;
     } catch {
       if (current())
@@ -207,7 +268,10 @@ export class PrintingSession {
     } finally {
       if (deadline) clearTimeout(deadline);
       controller.abort();
-      if (this.controller === controller) this.controller = undefined;
+      if (this.controller === controller) {
+        this.controller = undefined;
+        this.activeEventId = undefined;
+      }
     }
   }
 }

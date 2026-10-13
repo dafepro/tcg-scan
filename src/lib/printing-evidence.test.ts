@@ -220,3 +220,47 @@ it("persists bounded native region measurements and literal reads without pixels
   oversized.observations[0].regions![0].sampledPixels = 16385;
   expect(() => parsePrintingEvidence(oversized, "event")).toThrow();
 });
+
+it("ignores YGOPRODeck provider-array positions without erasing actual variant differences", async () => {
+  const one: PrintingCandidate = {
+    key: "yugioh:123:set:LOB-EN001:Ultra%20Rare:0",
+    game: "yugioh",
+    name: "Fixture",
+    identityKey: "yugioh:123",
+    setCode: "LOB-EN001",
+    rarity: "Ultra Rare",
+    number: "001",
+  };
+  const two: PrintingCandidate = {
+    ...one,
+    key: "yugioh:123:set:SDK-EN001:Ultra%20Rare:1",
+    setCode: "SDK-EN001",
+  };
+  const options = {
+    provider: "YGOPRODeck",
+    scope: "English listed set rows",
+    stale: false,
+    catalogCompleteForIdentity: true,
+  };
+  const a = await catalogProvenance({ ...options, candidates: [one, two] });
+  const b = await catalogProvenance({
+    ...options,
+    candidates: [
+      { ...two, key: two.key.replace(/:1$/, ":0") },
+      { ...one, key: one.key.replace(/:0$/, ":1") },
+    ],
+  });
+  expect(a.snapshotId).toBe(b.snapshotId);
+  expect(
+    (
+      await catalogProvenance({
+        ...options,
+        candidates: [one, { ...two, rarity: "Secret Rare" }],
+      })
+    ).snapshotId,
+  ).not.toBe(a.snapshotId);
+  expect(
+    (await catalogProvenance({ ...options, candidates: [one, one, two] }))
+      .snapshotId,
+  ).not.toBe(a.snapshotId);
+});

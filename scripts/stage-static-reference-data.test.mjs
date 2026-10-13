@@ -8,6 +8,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   truncate,
@@ -81,7 +82,11 @@ async function exists(path) {
   );
 }
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "tcg-static-test-"));
+  // macOS exposes /var through a symlink. Resolve the OS temp root so fixtures
+  // exercise payload policy without weakening the packager's ancestor checks.
+  const root = await mkdtemp(
+    join(await realpath(tmpdir()), "tcg-static-test-"),
+  );
   t.after(() => rm(root, { recursive: true, force: true })); // Only this test's own mkdtemp tree.
   const repo = join(root, "repo"),
     source = join(root, "references"),

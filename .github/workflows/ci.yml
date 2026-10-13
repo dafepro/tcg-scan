@@ -1,8 +1,18 @@
 name: CI
-# Cloud-only development: publication must not automatically run on a personal Mac.
-# This existing runner is used only through an explicitly requested manual dispatch.
+# The owner can run trusted main on Mac (default) or explicitly select Ubuntu.
 on:
+  workflow_call:
+    inputs:
+      build_runner:
+        type: string
+        default: default
   workflow_dispatch:
+    inputs:
+      build_runner:
+        description: Use the repository preference, Mac, or GitHub-hosted Ubuntu
+        type: choice
+        default: default
+        options: [default, mac, github]
 permissions:
   contents: read
 concurrency:
@@ -13,16 +23,16 @@ jobs:
     # A personal runner must never execute code from public pull requests.
     if: >-
       github.repository == 'dafepro/tcg-scan' &&
-      github.actor == 'dafepro' &&
+      github.actor_id == '313492551' &&
       github.ref == 'refs/heads/main' &&
       github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, macOS, ARM64, dcarrell-mac]
+    runs-on: ${{ (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
       - run: npm ci
@@ -32,9 +42,10 @@ jobs:
         timeout-minutes: 5
       - run: npm run test:e2e
         env:
+          PLAYWRIGHT_TEST_PORT: ${{ vars.PLAYWRIGHT_TEST_PORT || '24173' }}
           RUN_LIVE_OCR: "1"
           RUN_LIVE_VISION: "1"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: browser-test-report

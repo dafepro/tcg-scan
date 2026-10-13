@@ -1,5 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const testPort = Number(process.env.PLAYWRIGHT_TEST_PORT ?? "4173");
+if (!Number.isInteger(testPort) || testPort < 1024 || testPort > 65535)
+  throw new Error(
+    "PLAYWRIGHT_TEST_PORT must be an integer between 1024 and 65535.",
+  );
+const testOrigin = `http://127.0.0.1:${testPort}`;
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -8,7 +15,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : undefined,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: testOrigin,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
@@ -27,9 +34,9 @@ export default defineConfig({
   ],
   webServer: {
     command: process.env.CI
-      ? "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort"
-      : "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+      ? `node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port ${testPort} --strictPort`
+      : `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${testPort} --strictPort`,
+    url: testOrigin,
+    reuseExistingServer: false,
   },
 });

@@ -4,9 +4,15 @@
 
 The intended public application is **tcg-scan** on Cloudflare Workers Static Assets at **tcg.quicktrack.cc**, mounted at **/**. The authorized account, unused hostname and dashboard folder-upload route were checked separately on 2026-10-13. Do not overwrite an existing DNS record or application; recheck the destination immediately before publishing. This is the normal application destination, without a development suffix.
 
-The app supports a static reference installer and a local-only packaging script. No Cloudflare account, project, route, custom domain, token, or deployment is configured by this document or script. The final release build, upload authorization and public smoke checks remain separate gates. The roughly 483 MB complete dashboard upload has not yet been exercised. A successful local verification or build is not a deployment.
+The app supports a static reference installer and a local-only packaging script. Deployment configuration and Cloudflare credentials live in [dafepro/deploy](https://github.com/dafepro/deploy), which owns the `tcg-scan` Worker and intended custom domain. Dashboard inspection found the existing Worker has no active deployment or custom domain. Its first public deployment and smoke checks remain separate gates. A successful local verification or build is not a deployment.
 
-Use the cloud Linux workspace for builds and packaging. No new Mac CI or local-computer workflow is needed. Do not add credentials to source, Vite environment variables, generated assets, this document, or the bundle. The app and local packager need no API key. Publishing separately requires an authorized Cloudflare session/account. Do not create persistent credentials or grant new permissions as a side effect of building.
+The owner selected Mac-first CI with an explicit GitHub-hosted Ubuntu override. Both CI and retained-release workflows are manual, numeric-owner-only and main-only; public PR code never runs on the personal runner. Repository variable `BUILD_RUNNER=github`, or dispatch input `build_runner=github`, selects hosted execution. GitHub does not automatically reroute an unavailable Mac. Do not add cloud credentials to source, Vite variables, generated assets or the bundle. The source repo receives only the shared central Issues-only request credential; Cloudflare credentials remain in deploy.
+
+## Central release requests
+
+After the migration PR and central controller are reviewed, set `DEPLOY_REQUESTS_ENABLED=true` and manually dispatch `.github/workflows/static-release.yml` on main. It runs normal checks, fetches the public reference ZIP pinned by this checkout, verifies archive and shard identities, builds static mode at `/`, and uses the existing packager to produce a fresh audited tree. It publishes a retained GitHub release containing `worker.tgz` and `release-manifest.json`, then requests a deployment PR through the shared `DEPLOY_REQUEST_TOKEN`. There is no direct Cloudflare deployment in the app repo.
+
+The central controller revalidates the successful source run, retained asset checksums, root base, all payload bytes and pinned reference manifest/shards before deploying. Routine updates use a single-Worker Editor token and version upload/deploy. A separately gated provisioning workflow owns the first custom-domain setup and refuses existing unowned DNS records. Both central tcg-scan switches start false. The retained release has roughly 483 MB of expanded files; this is an explicit release build, not a download in default tests.
 
 ## Local server and static mode
 
@@ -17,7 +23,7 @@ Use the cloud Linux workspace for builds and packaging. No new Mac CI or local-c
 - A `/tcg-scan/` base build is suitable only when the host actually mounts these files at that prefix. Uploading its files to the root of a plain `pages.dev` or `workers.dev` site does not automatically create that mount. Use `/` for a root deployment or rebuild for the verified route. Do not guess the final route.
 - Failed integrity checks do not fall back silently to a relay or another origin. The user can explicitly choose the complete reference ZIP fallback. Other games still require their own compatible visual references.
 
-## Build in the cloud
+## Build in a reviewed workspace
 
 From the reviewed checkout, use its installed lockfile dependencies. On a fresh authorized environment, install with `npm ci` first. Run the normal checks. The aggregate includes the packager's Node tests through `test:packaging`, separately from Vitest:
 
@@ -100,7 +106,7 @@ The earlier 2026-10-13 `/tcg-scan/` QA build, before generated host headers, had
 - Manifest: 8,394,772 bytes; largest shard: 2,490,400 bytes
 - Manifest SHA-256: `82efef2f91f2d2338c4634a0284912679f994c835b3eef5d3632bcb9c10f5d19`
 
-Do not upload the 358 MB release ZIP as one asset: it exceeds the individual asset limit. The verified extracted files satisfy the per-asset constraint. This does not guarantee a particular account has permission, quota, or a working dashboard upload. Cloudflare project selection, authentication, public/private visibility, route handling, and upload remain separate checks. No production IDs or speculative `wrangler` configuration are committed here.
+Do not upload the 358 MB release ZIP as one asset: it exceeds the individual asset limit. The verified extracted files satisfy the per-asset constraint. This does not guarantee a particular account has permission, quota, or a working dashboard upload. Cloudflare project selection, authentication, public/private visibility, route handling, and upload remain separate checks. Production hosting configuration is reviewed in the central deploy repo; source artifacts supply no account IDs, routes or runtime credentials.
 
 ## Deterministic Workers response headers and routing
 
@@ -131,3 +137,5 @@ Verify in the actual HTTPS application URL, with a clean browser profile:
 5. Confirm real-device camera and local scanning separately. Browser storage belongs to that origin and device; it does not migrate from localhost or another dev URL. Do not promise service-worker offline startup or complete offline catalog/pricing access.
 
 Record the final URL, chosen base path, build/report/checksum identifiers and which checks actually ran. A successful local packager test does not stand in for deployed-browser or physical-card QA.
+
+Browser CI runs its own production-preview server at `PLAYWRIGHT_TEST_PORT` (repository variable; default 24173 in CI). Local checks can set the same environment variable. A server already using that port is an explicit test prerequisite failure; the suite never silently reuses an unrelated application.

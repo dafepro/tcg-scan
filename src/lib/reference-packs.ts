@@ -738,11 +738,29 @@ async function boundedFetch(
   });
   return result;
 }
+/** Manifest paths stay portable /packs/ entries; only fetch routing uses the app base. */
+function prebuiltRuntimePath(file: string): string {
+  const base = import.meta.env.BASE_URL || "/";
+  const origin = "https://tcg-scan.invalid";
+  const parsed = new URL(base, origin);
+  if (
+    !base.startsWith("/") ||
+    base.startsWith("//") ||
+    !base.endsWith("/") ||
+    base.includes("\\") ||
+    parsed.origin !== origin ||
+    parsed.pathname !== base ||
+    parsed.search ||
+    parsed.hash
+  )
+    invalid("Prebuilt packs require a normalized same-origin app base path.");
+  return base + packUrl(file).slice(1);
+}
 export async function loadPrebuiltPackManifest(
   signal?: AbortSignal,
 ): Promise<PrebuiltPackManifest> {
   const bytes = await boundedFetch(
-    "/packs/manifest.json",
+    prebuiltRuntimePath("/packs/manifest.json"),
     2 * 1024 * 1024,
     signal,
   );
@@ -755,7 +773,7 @@ export async function installPrebuiltPack(
   const entry = validatePrebuiltManifest({ version: 1, packs: [value] })
     .packs[0];
   const bytes = await boundedFetch(
-    entry.file,
+    prebuiltRuntimePath(entry.file),
     Math.min(entry.bytes, MAX_PACK_BYTES),
     signal,
   );

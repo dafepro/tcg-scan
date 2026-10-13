@@ -75,7 +75,7 @@ function ygoFields(code: string): { number: string; locale?: string } {
 const SERIES_KEY = "printing:v1:pokemon:sets-and-pocket";
 type Obj = Record<string, unknown>;
 interface Lookup { reference: ReferenceMetadata; key: string; id: string; expectedIdentity?: string }
-interface Budget { signal: AbortSignal; bytes: number }
+interface Budget { signal: AbortSignal; bytes: number; refresh: boolean; cacheEpoch: object }
 interface Pending { controller: AbortController; promise: Promise<PrintingCatalogSnapshot>; subscribers: number; settled: boolean }
 interface PokemonSets { sets: { id: string; name: string; official?: number }[]; pocket: string[] }
 class CatalogFailure extends Error {
@@ -202,8 +202,13 @@ export interface PrintingCatalogOptions {
   requestTimeoutMs?: number;
   lookupTimeoutMs?: number;
 }
+export interface PrintingCatalogRequestOptions {
+  signal?: AbortSignal;
+  /** Explicit user recheck only: bypass metadata TTLs and revalidate HTTP caches. */
+  refresh?: boolean;
+}
 export interface PrintingCatalog {
-  getPrintingCandidates(reference: ReferenceMetadata, options?: { signal?: AbortSignal }): Promise<PrintingCatalogSnapshot>;
+  getPrintingCandidates(reference: ReferenceMetadata, options?: PrintingCatalogRequestOptions): Promise<PrintingCatalogSnapshot>;
 }
 function lowerBound(value: number | undefined, fallback: number) {
   return value !== undefined && Number.isFinite(value) ? Math.max(1, Math.min(fallback, Math.floor(value))) : fallback;
@@ -219,6 +224,9 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
   const maxPages = lowerBound(options.maxPages, PRINTING_CATALOG_LIMITS.pages);
   const requestTimeout = lowerBound(options.requestTimeoutMs, PRINTING_CATALOG_LIMITS.requestTimeoutMs);
   const lookupTimeout = lowerBound(options.lookupTimeoutMs, PRINTING_CATALOG_LIMITS.lookupTimeoutMs);
+  // A later explicit refresh takes cache-write ownership from older lookups.
+  // One token, not a growing map: unrelated older lookups may simply skip caching.
+  let refreshEpoch = {};
   const memory = new Map<string, PrintingCatalogCacheEntry>();
   let memoryBytes = 0;
   const pending = new Map<string, Pending>();
@@ -260,8 +268,9 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
       return raw as PrintingCatalogCacheEntry;
     } catch { check(signal); return; }
   }
-  async function save(key: string, payload: unknown, ttl: number, signal: AbortSignal, fetchedAt = now()) {
+  async function save(key: string, payload: unknown, ttl: number, signal: AbortSignal, fetchedAt = now(), cacheEpoch = refreshEpoch) {
     check(signal);
+    if (cacheEpoch !== refreshEpoch) return;
     const entry: PrintingCatalogCacheEntry = { version: 1, key, fetchedAt, expiresAt: fetchedAt + ttl, payload };
     remember(entry);
     // A blocked IndexedDB open/write must not hold this lookup indefinitely.
@@ -294,6 +303,7 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
       const response = await raceSignal(fetcher(target.href, {
         method: "GET", credentials: "omit", redirect: "error", referrerPolicy: "no-referrer",
         headers: { Accept: "application/json" }, signal: controller.signal,
+        ...(budget.refresh ? { cache: "no-cache" as const } : {}),
       }), controller.signal);
       if (response.redirected || response.type === "opaqueredirect" || (response.url && safeUrl(response.url, [HOST[game]]).href !== target.href)) fail("unsafe-url");
       if (response.status === 429) {
@@ -418,8 +428,8 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
   }
   async function pokemonSets(budget: Budget): Promise<PokemonSets> {
     const entry = await cached(SERIES_KEY, DAY, budget.signal);
-    if (entry && entry.expiresAt > now()) {
-      try { const sets = parseSets(entry.payload); remember(entry); return sets; } catch { /* Re-fetch corrupt metadata. */ }
+    if (entry && entry.expiresAt > now() && !budget.refresh) {
+      try { const sets = parseSets(entry.payload); if (budget.cacheEpoch === refreshEpoch) remember(entry); return sets; } catch { /* Re-fetch corrupt metadata. */ }
     }
     const setsData = await request("pokemon", new URL(`https://${HOST.pokemon}/v2/en/sets`), budget);
     const pocketData = obj(await request("pokemon", new URL(`https://${HOST.pokemon}/v2/en/series/tcgp`), budget));
@@ -431,7 +441,7 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
     const pocket = list(pocketData.sets, PRINTING_CATALOG_LIMITS.sets).map((row) => obj(row).id);
     const parsed = parseSets({ sets, pocket });
     check(budget.signal);
-    await save(SERIES_KEY, parsed, DAY, budget.signal);
+    await save(SERIES_KEY, parsed, DAY, budget.signal, now(), budget.cacheEpoch);
     return parsed;
   }
   async function pokemon(info: Lookup, budget: Budget): Promise<PrintingCandidate[]> {
@@ -551,7 +561,7 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
         setName, setCode, rarity, sourceUrl: url.href };
     });
   }
-  async function perform(info: Lookup, signal: AbortSignal): Promise<PrintingCatalogSnapshot> {
+  async function perform(info: Lookup, signal: AbortSignal, refresh: boolean, cacheEpoch: object): Promise<PrintingCatalogSnapshot> {
     let old: PrintingCatalogSnapshot | undefined;
     const controller = new AbortController();
     const stop = () => controller.abort();
@@ -568,18 +578,18 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
           const candidates = validateCandidates(payload.candidates, info);
           if (!candidates.length) fail();
           old = snapshot(info, candidates, entry.fetchedAt);
-          remember(entry);
-          if (entry.expiresAt > now()) return old;
+          if (cacheEpoch === refreshEpoch) remember(entry);
+          if (entry.expiresAt > now() && !refresh) return old;
         } catch { /* Incompatible/old/corrupt caches cannot establish completeness. */ }
       }
-      const budget: Budget = { signal: controller.signal, bytes: 0 };
+      const budget: Budget = { signal: controller.signal, bytes: 0, refresh, cacheEpoch };
       const raw = await raceSignal(({ pokemon, mtg, yugioh }[info.reference.game])(info, budget), controller.signal);
       const candidates = validateCandidates(raw, info);
       check(controller.signal);
       if (!candidates.length) fail("not-found");
       const fetchedAt = now();
       const result = snapshot(info, candidates, fetchedAt);
-      await save(info.key, { scope: result.scope, candidates }, TTL[info.reference.game], controller.signal, fetchedAt);
+      await save(info.key, { scope: result.scope, candidates }, TTL[info.reference.game], controller.signal, fetchedAt, cacheEpoch);
       check(controller.signal);
       return result;
     } catch (error) {
@@ -589,7 +599,7 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
     } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
   }
   return {
-    async getPrintingCandidates(reference, { signal } = {}) {
+    async getPrintingCandidates(reference, { signal, refresh = false } = {}) {
       check(signal);
       let info: Lookup;
       try { info = lookup(reference); } catch (error) {
@@ -597,16 +607,20 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
         return { candidates: [], catalogCompleteForIdentity: false, scope: SCOPE[game], provider: PROVIDER[game], locale: "en",
           lookupKey: "", referenceKey: reference.key, stale: false, error: error instanceof CatalogFailure ? error.code : "invalid-reference" };
       }
-      let task = pending.get(info.key);
+      // Refresh callers must never join a normal task that can return a TTL cache hit.
+      // Both modes still share request rate, memory, timeout and pending-work bounds.
+      const pendingKey = `${refresh ? "refresh" : "normal"}:${info.key}`;
+      let task = pending.get(pendingKey);
       if (!task || task.controller.signal.aborted) {
         if (pending.size >= PRINTING_CATALOG_LIMITS.pendingIdentities) return { ...snapshot(info, []), catalogCompleteForIdentity: false, error: "busy" };
         const controller = new AbortController();
-        task = { controller, promise: perform(info, controller.signal), subscribers: 0, settled: false };
+        if (refresh) refreshEpoch = {};
+        task = { controller, promise: perform(info, controller.signal, refresh, refreshEpoch), subscribers: 0, settled: false };
         const current = task;
-        pending.set(info.key, task);
+        pending.set(pendingKey, task);
         void task.promise.then(() => undefined, () => undefined).finally(() => {
           current.settled = true;
-          if (pending.get(info.key) === current) pending.delete(info.key);
+          if (pending.get(pendingKey) === current) pending.delete(pendingKey);
         });
       }
       task.subscribers++;
@@ -624,7 +638,7 @@ export function createPrintingCatalog(options: PrintingCatalogOptions = {}): Pri
   };
 }
 let defaultCatalog: PrintingCatalog | undefined;
-export function getPrintingCandidates(reference: ReferenceMetadata, options?: { signal?: AbortSignal }): Promise<PrintingCatalogSnapshot> {
+export function getPrintingCandidates(reference: ReferenceMetadata, options?: PrintingCatalogRequestOptions): Promise<PrintingCatalogSnapshot> {
   defaultCatalog ??= createPrintingCatalog();
   return defaultCatalog.getPrintingCandidates(reference, options);
 }

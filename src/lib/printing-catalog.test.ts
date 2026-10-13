@@ -455,3 +455,151 @@ describe("persistent cache bounds", () => {
   });
 
 });
+
+describe("explicit saved-catalog refresh", () => {
+  it("bypasses a valid 24-hour card AND set cache, revalidates HTTP, and leaves normal scanning cached", async () => {
+    let official = 198;
+    const { catalog, fetcher, advance } = setup(pkHandler([pkRow()], (url) =>
+      url.pathname === "/v2/en/sets"
+        ? pkSets.map((set) => ({ ...set, cardCount: { ...set.cardCount, official } }))
+        : undefined));
+    const first = await catalog.getPrintingCandidates(pokemon);
+    advance(1000);
+    await catalog.getPrintingCandidates(pokemon);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    official = 199;
+    const refreshed = await catalog.getPrintingCandidates(pokemon, { refresh: true });
+    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(refreshed.candidates[0].printedTotal).toBe(199);
+    expect(refreshed.provenance?.snapshotId).not.toBe(first.provenance?.snapshotId);
+    expect(refreshed.fetchedAt).not.toBe(first.fetchedAt);
+    for (const [, init] of fetcher.mock.calls.slice(3)) expect(init?.cache).toBe("no-cache");
+    for (const [, init] of fetcher.mock.calls.slice(0, 3)) expect(init?.cache).toBeUndefined();
+    expect(await catalog.getPrintingCandidates(pokemon)).toEqual(refreshed);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+  it("cannot coalesce an explicit refresh into a normal task returning a valid cache hit", async () => {
+    let rows = [pkRow()];
+    const { catalog, fetcher } = setup((url) => pkHandler(rows)(url));
+    const first = await catalog.getPrintingCandidates(pokemon);
+    rows = [pkRow(), pkRow("026")];
+    const normal = catalog.getPrintingCandidates(pokemon);
+    const forced = catalog.getPrintingCandidates(pokemon, { refresh: true });
+    expect((await normal).provenance?.snapshotId).toBe(first.provenance?.snapshotId);
+    expect((await forced).candidates).toHaveLength(2);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+  });
+  it("coalesces refresh subscribers while cancellation stays subscriber-scoped", async () => {
+    let release!: (value: unknown) => void;
+    const { catalog, fetcher } = setup(() => new Promise((resolve) => { release = resolve; }));
+    const controller = new AbortController();
+    const first = catalog.getPrintingCandidates(yugioh, { refresh: true, signal: controller.signal });
+    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    const second = catalog.getPrintingCandidates(yugioh, { refresh: true });
+    await tick();
+    controller.abort();
+    release({ data: [ygoRow()] });
+    await rejected;
+    expect((await second).catalogCompleteForIdentity).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("keeps a failed forced refresh stale even when its fallback TTL has not expired", async () => {
+    let offline = false;
+    const { catalog, cache, advance } = setup((url) => {
+      if (offline) throw new Error("offline");
+      return pkHandler([pkRow()])(url);
+    });
+    const first = await catalog.getPrintingCandidates(pokemon);
+    const saved = structuredClone(cache.entries);
+    advance(1000); offline = true;
+    const result = await catalog.getPrintingCandidates(pokemon, { refresh: true });
+    expect(result).toMatchObject({ stale: true, catalogCompleteForIdentity: false, error: "network", fetchedAt: first.fetchedAt });
+    expect(result.provenance).toMatchObject({ stale: true, completeWithinScope: false, snapshotId: first.provenance!.snapshotId });
+    expect(cache.entries).toEqual(saved);
+  });
+  it("fails closed when forced set metadata is missing or malformed without replacing the card cache", async () => {
+    let broken = false;
+    const { catalog, cache } = setup(pkHandler([pkRow()], (url) =>
+      broken && url.pathname === "/v2/en/sets" ? [] : undefined));
+    const first = await catalog.getPrintingCandidates(pokemon);
+    const good = structuredClone(cache.entries.get(first.lookupKey));
+    broken = true;
+    const result = await catalog.getPrintingCandidates(pokemon, { refresh: true });
+    expect(result).toMatchObject({ stale: true, catalogCompleteForIdentity: false, error: "invalid-response" });
+    expect(cache.entries.get(first.lookupKey)).toEqual(good);
+  });
+  it("preserves the shared provider rate limit and cooldown on explicit refreshes", async () => {
+    let limited = false;
+    const { catalog, fetcher, times } = setup(() => limited
+      ? json({}, 429, { "Retry-After": "60" }) : { data: [ygoRow()] });
+    await catalog.getPrintingCandidates(yugioh);
+    await catalog.getPrintingCandidates(yugioh, { refresh: true });
+    limited = true;
+    expect(await catalog.getPrintingCandidates(yugioh, { refresh: true })).toMatchObject({ error: "rate-limit", stale: true });
+    const count = fetcher.mock.calls.length;
+    expect(await catalog.getPrintingCandidates(yugioh, { refresh: true })).toMatchObject({ error: "rate-limit", stale: true });
+    expect(fetcher).toHaveBeenCalledTimes(count);
+    expect(times.slice(1).every((time, i) => time - times[i] >= 250)).toBe(true);
+  });
+  it("retains response bounds and cancellation for refresh mode", async () => {
+    const bounded = setup(pkHandler([pkRow(), pkRow("026")]), { maxCandidates: 1 });
+    expect(await bounded.catalog.getPrintingCandidates(pokemon, { refresh: true })).toMatchObject({ error: "limit", catalogCompleteForIdentity: false });
+    let signal: AbortSignal | undefined;
+    const blocked = setup((_, init) => { signal = init?.signal ?? undefined; return new Promise(() => undefined); });
+    const controller = new AbortController();
+    const result = blocked.catalog.getPrintingCandidates(yugioh, { refresh: true, signal: controller.signal });
+    const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+    await tick();
+    controller.abort();
+    await rejected;
+    expect(signal?.aborted).toBe(true);
+    expect(blocked.cache.put).not.toHaveBeenCalled();
+  });
+});
+
+it("an older normal lookup cannot overwrite a newer forced-refresh cache when responses finish out of order", async () => {
+  const releases: ((value: unknown) => void)[] = [];
+  const { catalog, cache, fetcher } = setup(() => new Promise((resolve) => releases.push(resolve)));
+  const normal = catalog.getPrintingCandidates(yugioh);
+  await tick();
+  const refreshed = catalog.getPrintingCandidates(yugioh, { refresh: true });
+  await tick();
+  releases[1]({ data: [ygoRow({ card_sets: [ygoSet({ set_name: "New snapshot" })] })] });
+  const newer = await refreshed;
+  releases[0]({ data: [ygoRow({ card_sets: [ygoSet({ set_name: "Old snapshot" })] })] });
+  expect((await normal).candidates[0].setName).toBe("Old snapshot");
+  expect(await catalog.getPrintingCandidates(yugioh)).toEqual(newer);
+  const stored = cache.entries.get(newer.lookupKey)!;
+  expect((stored.payload as { candidates: { setName: string }[] }).candidates[0].setName).toBe("New snapshot");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("does not let older shared Pokémon set metadata replace the refreshed set cache across identities", async () => {
+  let releaseSets!: (value: unknown) => void;
+  let setRequests = 0;
+  const { catalog, cache } = setup((url) => {
+    if (url.pathname === "/v2/en/cards") return [pkRow("025", { name: url.searchParams.get("name")!.slice(3) })];
+    if (url.pathname === "/v2/en/sets") {
+      if (++setRequests === 1) return new Promise((resolve) => { releaseSets = resolve; });
+      return pkSets.map((set) => ({ ...set, cardCount: { ...set.cardCount, official: 199 } }));
+    }
+    return { id: "tcgp", sets: [{ id: "A1" }] };
+  });
+  const normal = catalog.getPrintingCandidates({ ...pokemon, name: "Raichu", identityKey: "pokemon:raichu" });
+  for (let i = 0; i < 10 && !releaseSets; i++) await tick();
+  const refreshed = await catalog.getPrintingCandidates(pokemon, { refresh: true });
+  expect(refreshed.candidates[0].printedTotal).toBe(199);
+  releaseSets(pkSets);
+  expect((await normal).candidates[0].printedTotal).toBe(198);
+  const sets = cache.entries.get("printing:v1:pokemon:sets-and-pocket")!.payload as { sets: { official: number }[] };
+  expect(sets.sets[0].official).toBe(199);
+});
+
+it("built-in IndexedDB cache orders overlapping atomic writes on a cold database open", async () => {
+  vi.stubGlobal("indexedDB", new IDBFactory());
+  const cache = createPrintingCatalogCache("concurrent-cold-write-test");
+  const old: PrintingCatalogCacheEntry = { version: 1, key: "same", fetchedAt: START, expiresAt: START + DAY, payload: "old" };
+  const newer = { ...old, fetchedAt: START + 1, expiresAt: START + DAY + 1, payload: "new" };
+  await Promise.all([cache.put(old), cache.put(newer)]);
+  expect(await cache.get("same")).toEqual(newer);
+});

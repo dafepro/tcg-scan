@@ -123,3 +123,26 @@ replacement/rejection/cancellation, queue omissions/capacity losses, processed v
 and saved events. Measured dimensions/timings appear only after an
 actual analysis and reset when preparing another source. Counts kept from a previous
 ended session remain visible until a new session is successfully committed.
+
+
+## Saved catalog review
+
+Collection keeps a quiet, keyboard-accessible **Catalog recheck** disclosure on
+saved entries. Opening it does not fetch. **Recheck provider catalog** explicitly
+requests provider metadata for this one saved identity, with one active check
+across the collection. Its pending state has **Cancel catalog check**; closing the
+disclosure, leaving Collection, deleting/replacing/editing the entry, or filtering
+it out cancels stale ownership. Reordering the same entries does not retarget work.
+
+The result distinguishes **Same provider snapshot at this check**, changed
+snapshot, stale fallback, incomplete coverage, unavailable response and
+legacy/unversioned evidence. Provider scope and actual fetch/check dates remain
+visible in the open panel. Same snapshot says nothing about global latestness,
+physical validation, language/edition/finish/condition or collection valuation.
+Original saved identifiers and evidence remain available without modification.
+
+Only the latest comparison is retained in this view. Leaving/reloading or editing
+the collection clears it; backups contain the original evidence, not this
+transient result. A failed retry replaces the previous success display. Native
+focusable disclosures, a collection-level polite announcement, wrapping long
+snapshot IDs and 44px controls keep review usable with keyboard/mobile/themes.

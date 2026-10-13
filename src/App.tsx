@@ -3,8 +3,10 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import DebugConsole from "./components/DebugConsole";
 import { useAppPreferences } from "./lib/app-preferences";
@@ -45,6 +47,11 @@ import ContinuousScanner from "./components/ContinuousScanner";
 import PackScanner from "./components/PackScanner";
 import { ReferenceQuotes } from "./components/ReferenceQuotes";
 import { PrintingEvidenceDetails } from "./components/PrintingEvidenceDetails";
+import { SavedCatalogReview } from "./components/SavedCatalogReview";
+import {
+  SavedCatalogReviewSession,
+  catalogReviewLabel,
+} from "./lib/saved-catalog-review";
 import {
   addScanEvent,
   undoScanEvent,
@@ -1352,21 +1359,35 @@ function CollectionView({
   const [sort, setSort] = useState("newest");
   const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [deleteEntry, setDeleteEntry] = useState<CollectionEntry | null>(null);
-  const entries = data.collection
-    .filter(
-      (e) =>
-        (game === "all" || e.card.game === game) &&
-        `${e.card.name} ${e.card.setName} ${e.card.number}`
-          .toLowerCase()
-          .includes(filter.toLowerCase()),
-    )
-    .sort((a, b) =>
-      sort === "name"
-        ? a.card.name.localeCompare(b.card.name)
-        : sort === "quantity"
-          ? b.quantity - a.quantity
-          : b.addedAt.localeCompare(a.addedAt),
-    );
+  const [catalogSession] = useState(() => new SavedCatalogReviewSession());
+  const catalogReview = useSyncExternalStore(
+    catalogSession.subscribe,
+    catalogSession.getSnapshot,
+    catalogSession.getSnapshot,
+  );
+  const entries = useMemo(
+    () =>
+      data.collection
+        .filter(
+          (e) =>
+            (game === "all" || e.card.game === game) &&
+            `${e.card.name} ${e.card.setName} ${e.card.number}`
+              .toLowerCase()
+              .includes(filter.toLowerCase()),
+        )
+        .sort((a, b) =>
+          sort === "name"
+            ? a.card.name.localeCompare(b.card.name)
+            : sort === "quantity"
+              ? b.quantity - a.quantity
+              : b.addedAt.localeCompare(a.addedAt),
+        ),
+    [data.collection, filter, game, sort],
+  );
+  useLayoutEffect(() => {
+    catalogSession.setEntries(entries);
+  }, [catalogSession, entries]);
+  useLayoutEffect(() => () => catalogSession.clear(), [catalogSession]);
   function quantity(entry: CollectionEntry, delta: number) {
     setData((d) => ({
       ...d,
@@ -1400,6 +1421,16 @@ function CollectionView({
           </div>
         }
       />
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="catalog-review-announcement"
+      >
+        {catalogReview
+          ? `${catalogReview.name}: ${catalogReviewLabel(catalogReview)}`
+          : ""}
+      </p>
       <div className="collection-stats">
         <div>
           <span>Total cards</span>
@@ -1536,6 +1567,17 @@ function CollectionView({
                       evidence={entry.printingRead.evidence}
                     />
                   )}
+                  <SavedCatalogReview
+                    entry={entry}
+                    state={
+                      catalogReview?.entryId === entry.id ? catalogReview : null
+                    }
+                    busy={catalogReview?.phase === "checking"}
+                    onCheck={() => {
+                      void catalogSession.start(entry);
+                    }}
+                    onCancel={() => catalogSession.cancel()}
+                  />
                   <div className="collection-meta">
                     <span>{entry.condition}</span>
                     <span>{entry.finish}</span>

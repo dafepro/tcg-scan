@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import {
   REFERENCE_DATABASE_NAME,
@@ -60,6 +60,7 @@ function fixture(): ReferenceFeaturePack {
     },
   };
 }
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.stubGlobal("indexedDB", new IDBFactory());
@@ -393,6 +394,53 @@ describe("same-origin, checksum-verified prebuilt installation", () => {
       vi.fn().mockResolvedValue(new Response('{"version":1,"packs":[]}')),
     );
     expect(await loadPrebuiltPackManifest()).toEqual({ version: 1, packs: [] });
+  });
+  it.each(["/", "/tcg-scan/"])(
+    "routes manifest and validated pack bytes beneath app base %s",
+    async (base) => {
+      vi.stubEnv("BASE_URL", base);
+      const { raw, entry } = await bundle();
+      const controller = new AbortController();
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('{"version":1,"packs":[]}'))
+        .mockResolvedValueOnce(new Response(raw));
+      vi.stubGlobal("fetch", fetch);
+      expect(await loadPrebuiltPackManifest(controller.signal)).toEqual({
+        version: 1,
+        packs: [],
+      });
+      const stored = await installPrebuiltPack(entry, controller.signal);
+      expect(stored.origin).toBe("prebuilt");
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        `${base}packs/manifest.json`,
+        `${base}packs/test.json`,
+      ]);
+      for (const [, options] of fetch.mock.calls)
+        expect(options).toMatchObject({
+          signal: controller.signal,
+          redirect: "error",
+          credentials: "same-origin",
+        });
+      expect(entry.file).toBe("/packs/test.json");
+    },
+  );
+  it.each([
+    "https://evil.example/",
+    "//evil.example/",
+    "../",
+    "/app/../",
+    "/app?x/",
+    "/app#x/",
+    "/app\\path/",
+  ])("rejects an unsafe app base %s before fetching", async (base) => {
+    vi.stubEnv("BASE_URL", base);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(loadPrebuiltPackManifest()).rejects.toThrow(
+      /same-origin app base/,
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("cancels oversized streamed responses", async () => {
     const { raw, entry } = await bundle();

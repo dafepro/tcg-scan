@@ -1,0 +1,55 @@
+.saved-catalog-review {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.saved-catalog-review summary {
+  min-height: 44px;
+  padding: 11px 0;
+  cursor: pointer;
+}
+.saved-catalog-review summary:focus-visible {
+  outline: 2px solid var(--focus, var(--accent));
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.saved-catalog-review-content {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.saved-catalog-review-content p,
+.saved-catalog-review-content dl {
+  margin: 8px 0;
+}
+.saved-catalog-review-content dt {
+  color: var(--muted);
+}
+.saved-catalog-review-content dd {
+  margin: 0 0 6px;
+}
+.saved-catalog-review-content section {
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.saved-catalog-review-content .button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.catalog-review-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

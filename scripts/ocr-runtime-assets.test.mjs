@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -22,7 +23,9 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const core = join(root, "node_modules/tesseract.js-core");
 async function fixture(t) {
-  const path = await mkdtemp(join(tmpdir(), "tcg-ocr-staging-"));
+  const path = await mkdtemp(
+    join(await realpath(tmpdir()), "tcg-ocr-staging-"),
+  );
   t.after(() => rm(path, { recursive: true, force: true }));
   const output = join(path, "ocr");
   await mkdir(output);

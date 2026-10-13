@@ -1,3 +1,9 @@
+import {
+  observePackTrace,
+  packTraceRejection,
+  type PackTrace,
+  type PackTraceReason,
+} from "./pack-trace";
 import type { PackCaptureIdentity } from "./pack-capture";
 import { packClock } from "./pack-capture";
 import { hasGeometricEvidence } from "./vision/scoring";
@@ -71,6 +77,7 @@ export class PackSession {
   constructor(
     readonly sessionId: string,
     private readonly now = packClock,
+    private readonly trace?: PackTrace,
   ) {
     if (!sessionId.trim() || sessionId.length > 200)
       throw new Error("Invalid pack session identifier.");
@@ -156,7 +163,14 @@ export class PackSession {
       return [];
     receipt.completedAt = completedAt;
     receipt.timings = { ...result.timings };
-    const review = (reason: string): PackSaveIntent[] => {
+    const review = (
+      reason: string,
+      traceReason?: PackTraceReason,
+    ): PackSaveIntent[] => {
+      if (traceReason)
+        observePackTrace(this.trace, (trace) =>
+          trace.decision(receipt.traceViewId, false, traceReason, this.now()),
+        );
       receipt.status = "review";
       receipt.reason = reason;
       return [];
@@ -169,12 +183,14 @@ export class PackSession {
     )
       return review(
         "Captured view was not completely verified; show the card again",
+        "incomplete-verification",
       );
     // Pack runs one whole-frame proposal. A malformed multi-region response is
     // never silently reduced to whichever identity happened to be strongest.
     if (result.detections.length !== 1)
       return review(
         "No single card identity was verified in this captured view",
+        "detection-count",
       );
     const detection = result.detections[0],
       best = detection.candidates[0];
@@ -192,7 +208,11 @@ export class PackSession {
       return review(
         detection.reason ||
           "Not enough clear card detail; show this card again",
+        observePackTrace(this.trace, () => packTraceRejection(detection)),
       );
+    observePackTrace(this.trace, (trace) =>
+      trace.decision(receipt.traceViewId, true, "verified", this.now()),
+    );
     receipt.reference = { ...best.reference };
     const key = identity(best.reference),
       existing = this.identityEvents.get(key);
@@ -201,6 +221,14 @@ export class PackSession {
       receipt.eventId = existing;
       const original = this.intents.get(existing),
         prior = original && this.receipts.get(original.receiptId);
+      observePackTrace(this.trace, (trace) =>
+        trace.save(
+          receipt.traceViewId,
+          "duplicate",
+          this.now(),
+          prior?.traceViewId,
+        ),
+      );
       receipt.reason =
         prior?.status === "saved"
           ? "Identity already saved in this pack. A separate physical copy is unconfirmed."
@@ -211,10 +239,14 @@ export class PackSession {
               : "This identity has an earlier pending save. A separate physical copy is unconfirmed.";
       return [];
     }
-    if (!autoSave)
+    if (!autoSave) {
+      observePackTrace(this.trace, (trace) =>
+        trace.save(receipt.traceViewId, "preview-only", this.now()),
+      );
       return review(
         "Identity verified from the captured view. Auto-save was off; nothing was saved.",
       );
+    }
     const eventId = `${this.sessionId}:pack:${receipt.frameId}`;
     const intent: PackSaveIntent = Object.freeze({
       sessionId: this.sessionId,
@@ -229,6 +261,14 @@ export class PackSession {
     receipt.eventId = eventId;
     receipt.status = "saving";
     receipt.reason = "Saving this captured card identity locally";
+    observePackTrace(this.trace, (trace) =>
+      trace.save(
+        receipt.traceViewId,
+        "pending",
+        this.now(),
+        receipt.traceViewId,
+      ),
+    );
     return [intent];
   }
   /** Explicitly confirm exactly one more physical copy of a saved receipt.
@@ -289,6 +329,9 @@ export class PackSession {
       reference,
       quantityConfirmation,
     });
+    const traceViewId = observePackTrace(this.trace, (trace) =>
+      trace.copy(source.traceViewId, confirmedAt),
+    );
     // Copy only actual acquisition provenance. Processing/saved timestamps and
     // timings belong to the original observation and must not look newly seen.
     this.receipts.set(receiptId, {
@@ -305,6 +348,7 @@ export class PackSession {
       height: source.height,
       queuedAt: source.queuedAt,
       qualityScore: source.qualityScore,
+      ...(traceViewId === undefined ? {} : { traceViewId }),
       receiptId,
       quantityConfirmation,
       reference: { ...reference },
@@ -331,6 +375,9 @@ export class PackSession {
       receipt.status = "error";
       receipt.error = error;
       receipt.reason = error;
+      observePackTrace(this.trace, (trace) =>
+        trace.save(receipt.traceViewId, "failed", this.now()),
+      );
     } else {
       const savedAt = this.now();
       if (
@@ -342,6 +389,9 @@ export class PackSession {
         return false;
       receipt.status = "saved";
       receipt.savedAt = savedAt;
+      observePackTrace(this.trace, (trace) =>
+        trace.save(receipt.traceViewId, "saved", savedAt),
+      );
       receipt.error = undefined;
       receipt.reason = intent.quantityConfirmation
         ? "Saved one extra copy you confirmed. Printing, finish and condition remain unconfirmed."
@@ -362,6 +412,9 @@ export class PackSession {
     receipt.status = "saving";
     receipt.error = undefined;
     receipt.reason = "Retrying the same local save";
+    observePackTrace(this.trace, (trace) =>
+      trace.save(receipt.traceViewId, "pending", this.now()),
+    );
     return intent;
   }
   /** Call only after the durable collection undo succeeded. Keep the identity
@@ -371,6 +424,9 @@ export class PackSession {
       receipt = intent && this.receipts.get(intent.receiptId);
     if (!intent || !receipt || receipt.status !== "saved") return false;
     receipt.status = "undone";
+    observePackTrace(this.trace, (trace) =>
+      trace.save(receipt.traceViewId, "undone", this.now()),
+    );
     receipt.reason = intent.quantityConfirmation
       ? "Undone this extra copy; automatic identity counting remains unchanged"
       : "Undone; this identity stays excluded for this pack";
@@ -391,6 +447,9 @@ export class PackSession {
         ["queued", "identifying", "saving", "error"].includes(receipt.status)
       ) {
         receipt.status = "cancelled";
+        observePackTrace(this.trace, (trace) =>
+          trace.cancelResult(receipt.traceViewId, this.now()),
+        );
         receipt.reason = "Stopped; this pending view will not be saved";
       }
   }

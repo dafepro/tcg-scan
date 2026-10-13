@@ -15,6 +15,8 @@ import type { ReferenceMetadata } from "../lib/vision";
 import { listLearnedPacks } from "../lib/learned-packs";
 import { PackCaptureLoop } from "../lib/pack-capture";
 import type { PackCaptureStats } from "../lib/pack-capture";
+import { createPackTrace, type PackTrace } from "../lib/pack-trace";
+import { PackTraceDetails } from "./PackTraceDetails";
 import { PackSession } from "../lib/pack-session";
 import { PackPrintingSession } from "../lib/pack-printing-session";
 import type { PackPrintingUpdate } from "../lib/pack-printing-session";
@@ -104,6 +106,9 @@ export default function PackScanner({
   const stream = useRef<MediaStream | null>(null);
   const session = useRef<PackSession | null>(null);
   const printing = useRef<PackPrintingSession | null>(null);
+  const [trace, setTrace] = useState<PackTrace | null>(null);
+  const [traceEnabled, setTraceEnabled] = useState(false);
+  const [traceInitFailed, setTraceInitFailed] = useState(false);
   const sourceUrl = useRef<string | null>(null);
   const saveError = useRef<string | null>(null);
   const preparation = useRef<AbortController | null>(null);
@@ -324,7 +329,9 @@ export default function PackScanner({
     preparation.current = controller;
     const current = () =>
       gen === generation.current && !controller.signal.aborted;
-    const s = new PackSession(crypto.randomUUID());
+    const { trace: nextTrace, failed: traceFailed } =
+      createPackTrace(traceEnabled);
+    const s = new PackSession(crypto.randomUUID(), undefined, nextTrace);
     let openingCamera = !file;
     try {
       const element = video.current;
@@ -447,6 +454,7 @@ export default function PackScanner({
         sessionId: s.sessionId,
         sourceId: crypto.randomUUID(),
         frameLimit: 1920,
+        trace: nextTrace,
         requestPrintingCrop: refinement
           ? (view) => refinement.requestCrop(view)
           : undefined,
@@ -538,6 +546,8 @@ export default function PackScanner({
       // A cancelled permission/model preparation keeps the previous saved receipts.
       session.current?.cancel();
       session.current = s;
+      setTrace(nextTrace ?? null);
+      setTraceInitFailed(traceFailed);
       newSessionPending.current = false;
       saveError.current = null;
       latestStats.current = undefined;
@@ -803,6 +813,13 @@ export default function PackScanner({
           Set up reference database
         </button>
       )}
+      <PackTraceDetails
+        trace={trace}
+        initializationFailed={traceInitFailed}
+        enabled={traceEnabled}
+        locked={active || busy}
+        onEnabled={setTraceEnabled}
+      />
       <details className="pack-printing-options">
         <summary>Optional printed-text read</summary>
         <label>
@@ -992,6 +1009,7 @@ export default function PackScanner({
             key={receipt.receiptId}
             data-capture-id={receipt.captureId}
             data-receipt-id={receipt.receiptId}
+            data-trace-view-id={receipt.traceViewId}
             data-quantity-origin={
               receipt.quantityConfirmation ? "user-confirmed" : "captured"
             }
@@ -1024,6 +1042,12 @@ export default function PackScanner({
             ) : (
               <details className="receipt-provenance">
                 <summary>Captured-view details</summary>
+                {receipt.traceViewId !== undefined && (
+                  <p>
+                    Local trace view {receipt.traceViewId} · receipt frame{" "}
+                    {receipt.frameId}
+                  </p>
+                )}
                 <p>
                   Captured at source {seconds(receipt.sourceFrame.mediaTime)}
                   {receipt.completedAt !== undefined

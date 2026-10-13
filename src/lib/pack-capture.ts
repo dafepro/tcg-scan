@@ -1,3 +1,4 @@
+import { observePackTrace, type PackTrace } from "./pack-trace";
 import {
   FrameCapture,
   CaptureFrameExpiredError,
@@ -40,6 +41,8 @@ export interface PackCaptureIdentity {
   readonly height: number;
   readonly queuedAt: number;
   readonly qualityScore: number;
+  /** Diagnostic acquisition sequence only; never identity or copy evidence. */
+  readonly traceViewId?: number;
 }
 export type PackCaptureView = PackCaptureIdentity;
 export interface PackLease {
@@ -140,6 +143,7 @@ export interface PackCaptureStats {
   readonly lastCaptureExpiry?: CaptureFrameExpiry;
 }
 interface ReservoirEntry {
+  readonly traceViewId?: number;
   readonly capturedAt: number;
   readonly sourceFrame: Readonly<NonNullable<CapturedPixels["sourceFrame"]>>;
   readonly observedAt: number;
@@ -237,6 +241,7 @@ export class PackCaptureQueue {
       maxViews: PACK_MAX_VIEWS,
       maxBytes: PACK_MAX_BYTES,
     },
+    private readonly trace?: PackTrace,
   ) {
     if (
       !sessionId.trim() ||
@@ -269,6 +274,13 @@ export class PackCaptureQueue {
     this.previous = { ...source };
     this.lastCapture = capture.capturedAt;
     this.counters.captured++;
+    const traceViewId = observePackTrace(this.trace, (trace) =>
+      trace.capture(
+        source.mediaTime,
+        source.presentedFrames,
+        capture.capturedAt,
+      ),
+    );
     // Consume strict native provenance even for skipped views. The prefilter
     // runs before IDs, immutable receipt metadata, or any pending-queue scan.
     const decision =
@@ -277,6 +289,9 @@ export class PackCaptureQueue {
         : this.prefilter.inspect(capture.image, capture.capturedAt);
     if (decision && !decision.admitted) {
       this.counters.preFiltered++;
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(traceViewId, "visual-skip", now),
+      );
       return {
         preFiltered: true,
         backpressured: false,
@@ -293,7 +308,7 @@ export class PackCaptureQueue {
       !this.cancelled &&
       (this.entries.length >= this.pendingLimit || this.reservoir.length)
     )
-      return this.defer(capture, sample, now);
+      return this.defer(capture, sample, now, traceViewId);
     const frameId = ++this.sequence,
       captureId = `${this.sessionId}:capture:${frameId}`;
     const view: PackCaptureIdentity = Object.freeze({
@@ -310,10 +325,18 @@ export class PackCaptureQueue {
       height: capture.image.height,
       queuedAt: now,
       qualityScore: sample.quality,
+      ...(traceViewId === undefined ? {} : { traceViewId }),
     });
     this.counters.offered++;
     const omitted: PackOmission[] = [];
-    const omit = (id: string, reason: PackOmissionReason) => {
+    const omit = (
+      id: string,
+      reason: PackOmissionReason,
+      diagnosticId?: number,
+    ) => {
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(diagnosticId, reason, now),
+      );
       omitted.push({ captureId: id, reason });
       this.counters.omitted++;
       if (reason === "queue-overflow") this.counters.dropped++;
@@ -324,7 +347,7 @@ export class PackCaptureQueue {
       // A candidate that had no storage must not become the visual anchor for
       // suppressing its next opportunity after the worker frees capacity.
       if (reason === "queue-overflow") this.prefilter.reset();
-      omit(captureId, reason);
+      omit(captureId, reason, traceViewId);
       return {
         preFiltered: false,
         backpressured: false,
@@ -351,7 +374,11 @@ export class PackCaptureQueue {
       this.entries.splice(this.entries.indexOf(similar), 1);
       this.bytes -= similar.bytes;
       recycled = similar.image.data.buffer;
-      omit(similar.view.captureId, "replaced-by-clearer-view");
+      omit(
+        similar.view.captureId,
+        "replaced-by-clearer-view",
+        similar.view.traceViewId,
+      );
     } else if (
       this.recent &&
       capture.capturedAt - this.recent.capturedAt < 600 &&
@@ -388,7 +415,7 @@ export class PackCaptureQueue {
       const [old] = this.entries.splice(victim, 1);
       this.bytes -= old.bytes;
       recycled = old.image.data.buffer;
-      omit(old.view.captureId, "queue-overflow");
+      omit(old.view.captureId, "queue-overflow", old.view.traceViewId);
     }
     const owned = structuredClone(capture.image.data.buffer, {
       transfer: [capture.image.data.buffer],
@@ -402,6 +429,9 @@ export class PackCaptureQueue {
     this.bytes += bytes;
     this.recent = { sample, capturedAt: capture.capturedAt };
     this.counters.admitted++;
+    observePackTrace(this.trace, (trace) =>
+      trace.schedule(traceViewId, "admitted", now, frameId),
+    );
     this.counters.peakRetainedBytes = Math.max(
       this.counters.peakRetainedBytes,
       this.bytes,
@@ -443,6 +473,7 @@ export class PackCaptureQueue {
     capture: CapturedPixels,
     sample: PackFrameSample,
     now: number,
+    traceViewId?: number,
   ): PackReservoirAdmission {
     this.counters.backpressureDeferred++;
     const bytes = capture.image.data.byteLength;
@@ -476,6 +507,9 @@ export class PackCaptureQueue {
       this.bytes - (victim?.bytes ?? 0) + bytes > this.limits.maxBytes
     ) {
       this.counters.backpressureRejected++;
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(traceViewId, "reservoir-rejected", now),
+      );
       this.counters.dropped++;
       this.prefilter.reset();
       return {
@@ -496,8 +530,15 @@ export class PackCaptureQueue {
       this.bytes -= victim.bytes;
       recycled = victim.image.data.buffer;
       this.counters.reservoirReplaced++;
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(victim?.traceViewId, "reservoir-replaced", now),
+      );
     }
+    observePackTrace(this.trace, (trace) =>
+      trace.schedule(traceViewId, "reservoir", now),
+    );
     this.reservoir.push({
+      ...(traceViewId === undefined ? {} : { traceViewId }),
       capturedAt: capture.capturedAt,
       sourceFrame: Object.freeze({ ...capture.sourceFrame! }),
       observedAt: now,
@@ -552,6 +593,9 @@ export class PackCaptureQueue {
         // reported delay disappear when a receipt is created later.
         queuedAt: candidate.observedAt,
         qualityScore: candidate.sample.quality,
+        ...(candidate.traceViewId === undefined
+          ? {}
+          : { traceViewId: candidate.traceViewId }),
       });
       this.entries.push({
         view,
@@ -566,6 +610,9 @@ export class PackCaptureQueue {
       this.counters.offered++;
       this.counters.admitted++;
       this.counters.reservoirPromoted++;
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(candidate.traceViewId, "admitted", now, frameId),
+      );
       promoted.push(view);
     }
     return promoted;
@@ -579,6 +626,9 @@ export class PackCaptureQueue {
       startedAt: now,
     });
     this.active = { entry, lease };
+    observePackTrace(this.trace, (trace) =>
+      trace.started(entry.view.traceViewId, now),
+    );
     return lease;
   }
   isCurrent(lease: PackLease): boolean {
@@ -604,6 +654,9 @@ export class PackCaptureQueue {
     if (this.isCurrent(lease) && !this.active!.processed) {
       this.active!.processed = true;
       this.counters.processed++;
+      observePackTrace(this.trace, (trace) =>
+        trace.processed(lease.view.traceViewId, completedAt ?? packClock()),
+      );
       const elapsed =
         completedAt === undefined ? NaN : completedAt - lease.startedAt;
       if (Number.isFinite(elapsed) && elapsed > 0) {
@@ -621,7 +674,19 @@ export class PackCaptureQueue {
     this.closed = true;
     this.prefilter.reset();
   }
-  cancel(): void {
+  cancel(now = packClock()): void {
+    for (const entry of this.entries)
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(entry.view.traceViewId, "cancelled", now),
+      );
+    for (const entry of this.reservoir)
+      observePackTrace(this.trace, (trace) =>
+        trace.schedule(entry.traceViewId, "cancelled", now),
+      );
+    if (this.active)
+      observePackTrace(this.trace, (trace) =>
+        trace.cancelResult(this.active!.entry.view.traceViewId, now),
+      );
     this.closed = true;
     this.cancelled = true;
     this.generation++;
@@ -666,6 +731,7 @@ interface PackLoopDependencies {
   sourceId: string;
   frameLimit: number;
   game?: VisionGame;
+  trace?: PackTrace;
   /** Optional admission reservation; default skips all printing crop work. */
   requestPrintingCrop?(view: PackCaptureIdentity): boolean;
   onQueued(view: PackCaptureIdentity): void;
@@ -717,6 +783,8 @@ export class PackCaptureLoop {
     this.queue = new PackCaptureQueue(
       dependencies.sessionId,
       dependencies.sourceId,
+      undefined,
+      dependencies.trace,
     );
     this.capture = dependencies.capture ?? new FrameCapture({ now: this.now });
     const source = dependencies.video.srcObject;
@@ -737,12 +805,18 @@ export class PackCaptureLoop {
   pause(): void {
     this.captureEpoch++;
     this.paused = true;
+    observePackTrace(this.dependencies.trace, (trace) =>
+      trace.control("paused"),
+    );
     this.queue.resetAdmissionHistory();
     if (this.timer) clearTimeout(this.timer);
   }
   resume(): void {
     if (this.disposed || !this.running || !this.paused) return;
     this.paused = false;
+    observePackTrace(this.dependencies.trace, (trace) =>
+      trace.control(this.ended ? "draining" : "active"),
+    );
     if (this.held) {
       const held = this.held;
       this.held = undefined;
@@ -767,6 +841,9 @@ export class PackCaptureLoop {
     if (this.disposed || this.ended) return;
     this.ended = true;
     this.queue.end();
+    observePackTrace(this.dependencies.trace, (trace) =>
+      trace.control("draining"),
+    );
     if (this.timer) clearTimeout(this.timer);
     this.capture.dispose();
     this.spare = undefined;
@@ -787,7 +864,11 @@ export class PackCaptureLoop {
         track.removeEventListener(name, this.sourceInterrupted);
     this.sourceTracks = [];
     this.capture.dispose();
-    this.queue.cancel();
+    this.queue.cancel(this.now());
+    if (!this.drained)
+      observePackTrace(this.dependencies.trace, (trace) =>
+        trace.control("cancelled"),
+      );
     this.spare = undefined;
     this.held = undefined;
   }
@@ -932,6 +1013,9 @@ export class PackCaptureLoop {
           !this.drained
         ) {
           this.drained = true;
+          observePackTrace(this.dependencies.trace, (trace) =>
+            trace.control("drained"),
+          );
           this.dependencies.onDrained();
         }
         return;
@@ -980,6 +1064,9 @@ export class PackCaptureLoop {
         this.emit();
       } else this.deliver(lease, result, timing);
     } catch (error) {
+      observePackTrace(this.dependencies.trace, (trace) =>
+        trace.workerError(lease?.view.traceViewId, this.now()),
+      );
       this.fail(error);
     } finally {
       if (lease && !this.paused && !this.disposed) void this.pump();

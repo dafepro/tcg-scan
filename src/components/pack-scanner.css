@@ -359,3 +359,53 @@
   padding: 8px 10px;
   border-left: 2px solid var(--border-strong);
 }
+
+.pack-trace-options {
+  margin-block: 1rem;
+  color: var(--muted);
+}
+.pack-trace-options summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: list-item;
+  align-content: center;
+  color: var(--text);
+}
+.pack-trace-options > label {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text);
+}
+.pack-trace-options input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.pack-trace-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.pack-trace-filter label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.pack-trace-filter input {
+  min-height: 44px;
+  width: min(100%, 14rem);
+}
+.pack-trace-records {
+  max-height: 26rem;
+  overflow: auto;
+  padding-inline-start: 1.5rem;
+  overflow-wrap: anywhere;
+}
+.pack-trace-records li {
+  margin-block: 0.8rem;
+}
+.pack-trace-records span {
+  display: block;
+}

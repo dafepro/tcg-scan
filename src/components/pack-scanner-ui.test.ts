@@ -23,3 +23,28 @@ describe("Pack optional printing UI gate", () => {
     expect(html).toContain("40 seconds");
   });
 });
+
+describe("Pack bounded diagnostic UI gate", () => {
+  it("starts trace opt-in unchecked behind a disclosure and describes its scope", () => {
+    const html = renderToStaticMarkup(
+      createElement(PackScanner, {
+        game: "pokemon",
+        onSave: () => undefined,
+        onUndo: () => undefined,
+        onSetup: () => undefined,
+      }),
+    );
+    const trace = html.match(
+      /<details class="pack-trace-options">[\s\S]*?<\/details>/,
+    )?.[0];
+    expect(trace).toBeDefined();
+    expect(trace).not.toMatch(/<details[^>]* open|<input[^>]* checked/);
+    expect(trace).toContain("Local session trace (optional)");
+    expect(trace).toContain("512");
+    expect(trace).toContain("672");
+    expect(trace).toContain("Nothing is uploaded or persisted automatically");
+    expect(trace).toContain("Failed preparation keeps the previous trace");
+    expect(trace).toContain("No trace was recorded for the current session");
+    expect(trace).not.toContain("Export local trace JSON");
+  });
+});

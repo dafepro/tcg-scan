@@ -1,0 +1,53 @@
+name: Build a retained tcg-scan static release
+on:
+  workflow_dispatch:
+    inputs:
+      build_runner:
+        description: Use the repository preference, Mac, or GitHub-hosted Ubuntu
+        type: choice
+        default: default
+        options: [default, mac, github]
+permissions:
+  contents: read
+concurrency:
+  group: static-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish retained static site
+    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && vars.DEPLOY_REQUESTS_ENABLED == 'true'
+    runs-on: ${{ (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run check
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Fetch and verify the pinned public numeric reference data
+        run: python3 scripts/fetch-static-reference.py "$RUNNER_TEMP/static-reference"
+      - name: Build and stage the complete same-origin root application
+        env:
+          VITE_TCG_REFERENCE_MODE: static
+        run: |
+          npm run build -- --base / --outDir "$RUNNER_TEMP/static-dist"
+          node scripts/stage-static-reference-data.mjs --source "$RUNNER_TEMP/static-reference/reference" --build "$RUNNER_TEMP/static-dist" --output "$RUNNER_TEMP/static-staged"
+          mkdir "$RUNNER_TEMP/static-release"
+          mv "$RUNNER_TEMP/static-staged/site" "$RUNNER_TEMP/static-release/assets"
+          COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/static-release/worker.tgz" -C "$RUNNER_TEMP/static-release" assets
+          python3 scripts/static-release-manifest.py "$RUNNER_TEMP/static-release"
+      - name: Publish immutable outputs and request a central deployment PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_REQUEST_TOKEN: ${{ secrets.DEPLOY_REQUEST_TOKEN }}
+        run: python3 scripts/publish-release.py tcg-scan production static "$RUNNER_TEMP/static-release"
+      - name: Remove temporary release files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/static-reference" "$RUNNER_TEMP/static-dist" "$RUNNER_TEMP/static-staged" "$RUNNER_TEMP/static-release"

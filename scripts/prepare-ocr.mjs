@@ -1,24 +1,21 @@
-import {
-  mkdir,
-  readdir,
-  copyFile,
-  readFile,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { stageOcrCoreAssets } from "./ocr-runtime-assets.mjs";
+const runtime = JSON.parse(
+  await readFile("node_modules/tesseract.js/package.json", "utf8"),
+);
+if (runtime.version !== "6.0.1")
+  throw new Error("Install exactly tesseract.js@6.0.1 before preparing OCR.");
 const destination = resolve("public/ocr");
-await mkdir(destination, { recursive: true });
+await stageOcrCoreAssets(
+  resolve("node_modules/tesseract.js-core"),
+  destination,
+);
 await copyFile(
   "node_modules/tesseract.js/dist/worker.min.js",
   `${destination}/worker.min.js`,
 );
-for (const file of await readdir("node_modules/tesseract.js-core"))
-  if (/^tesseract-core.*\.wasm(?:\.js)?$/.test(file))
-    await copyFile(
-      `node_modules/tesseract.js-core/${file}`,
-      `${destination}/${file}`,
-    );
 const modelSource =
   "node_modules/@tesseract.js-data/eng/4.0.0/eng.traineddata.gz";
 const modelSha256 =

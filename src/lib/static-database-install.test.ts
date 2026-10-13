@@ -517,7 +517,7 @@ describe("fail-closed static responses and manifest contract", () => {
       /missing its body/,
     );
   });
-  it.each(["gzip", "br", "deflate"])(
+  it.each(["gzip", "br", "deflate", "zstd"])(
     "checks exact decoded bytes when Fetch reports %s transport encoding",
     async (encoding) => {
       const normal = fixtureFetch();
@@ -534,6 +534,62 @@ describe("fail-closed static responses and manifest contract", () => {
       expect((await installStaticPokemonDatabase()).readiness).toBe("ready");
     },
   );
+  it("accepts browser-decoded zstd without transport Content-Length", async () => {
+    const normal = fixtureFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url, init) => {
+        const res = await normal(url, init);
+        res.headers.set("content-encoding", "zstd");
+        res.headers.delete("content-length");
+        return res;
+      }),
+    );
+    expect((await installStaticPokemonDatabase()).readiness).toBe("ready");
+  });
+  it.each([-1, 1])(
+    "rejects zstd decoded manifest length discrepancy %s before import",
+    async (delta) => {
+      const res = response(
+        new ArrayBuffer(manifestBytes.byteLength + delta),
+        "application/json",
+      );
+      res.headers.set("content-encoding", "zstd");
+      res.headers.set("content-length", "50");
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res));
+      await expect(installStaticPokemonDatabase()).rejects.toThrow(
+        /truncated|safe size limit/,
+      );
+      expect(importer).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects same-length corrupt zstd-decoded manifest before shard fetches", async () => {
+    const damaged = manifestBytes.slice(0);
+    new Uint8Array(damaged)[20] ^= 1;
+    const res = response(damaged, "application/json");
+    res.headers.set("content-encoding", "zstd");
+    res.headers.set("content-length", "50");
+    const fetcher = vi.fn().mockResolvedValue(res);
+    vi.stubGlobal("fetch", fetcher);
+    await expect(installStaticPokemonDatabase()).rejects.toThrow(/pinned/);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(importer).not.toHaveBeenCalled();
+  });
+  it("rejects same-length corrupt zstd-decoded shard and rolls back readiness", async () => {
+    const damaged = binaries.get("features-00001.bin")!.slice(0);
+    new Uint8Array(damaged)[100] ^= 1;
+    const res = response(damaged);
+    res.headers.set("content-encoding", "zstd");
+    res.headers.set("content-length", "50");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(manifestResponse()).mockResolvedValue(res),
+    );
+    await expect(installStaticPokemonDatabase()).rejects.toThrow(
+      /checksum|hash/i,
+    );
+    expect(await listLearnedPacks()).toEqual([]);
+  });
   it("rejects unknown encodings and oversized compressed transfer metadata", async () => {
     const res = manifestResponse();
     res.headers.set("content-encoding", "invented");

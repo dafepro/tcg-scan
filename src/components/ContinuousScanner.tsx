@@ -75,6 +75,7 @@ import type { ScanContinuityPolicy } from "../lib/scan-session";
 import "./continuous-scanner.css";
 import type { AppPreferences } from "../lib/app-preferences";
 import { diagnostics } from "../lib/diagnostics";
+import { printingDiagnosticFields } from "../lib/printing-diagnostics";
 import type { ScannerLifecycle } from "../lib/scanner-lifecycle";
 
 type Props = {
@@ -399,6 +400,12 @@ export default function ContinuousScanner({
     printing.current?.dispose();
     printing.current = new PrintingSession({
       catalog: getPrintingCandidates,
+      onDiagnostics: (_eventId, resolution) =>
+        diagnostics.record(
+          "printing",
+          "scan",
+          printingDiagnosticFields(resolution),
+        ),
       isCurrent: (f) =>
         gen === generation.current &&
         running.current &&
@@ -785,6 +792,7 @@ export default function ContinuousScanner({
     if (busy || active || !packsReady || !installedCount) return;
     newSessionPending.current = true;
     diagnostics.reset("live");
+    diagnostics.reset("printing");
     setTimings(undefined);
     setCameraPreparing(true);
     setMessage(
@@ -1054,6 +1062,7 @@ export default function ContinuousScanner({
     setBusy(true);
     setPhotoPreparing(true);
     diagnostics.reset("live");
+    diagnostics.reset("printing");
     setTimings(undefined);
     setShowUnmatched(false);
     setError("");
@@ -1343,7 +1352,13 @@ export default function ContinuousScanner({
       savedCount: sessionCount,
     });
   }, [active, paused, busy, sessionCount, photoMatches.length, onSessionState]);
-  useEffect(() => () => diagnostics.reset("live"), []);
+  useEffect(
+    () => () => {
+      diagnostics.reset("live");
+      diagnostics.reset("printing");
+    },
+    [],
+  );
 
   const databasePanel = (
     <div

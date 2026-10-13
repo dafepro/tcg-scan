@@ -7,6 +7,7 @@ export const DIAGNOSTIC_SOURCES = [
   "pack",
   "vision",
   "storage",
+  "printing",
 ] as const;
 export const DIAGNOSTIC_EVENTS = [
   "mount",
@@ -29,6 +30,22 @@ export const DIAGNOSTIC_EVENTS = [
 export type DiagnosticSource = (typeof DIAGNOSTIC_SOURCES)[number];
 export type DiagnosticEventName = (typeof DIAGNOSTIC_EVENTS)[number];
 const enumFields = {
+  printingState: ["unresolved", "catalog-printing-read"],
+  printingReason: [
+    "catalog-coverage-incomplete",
+    "identity-catalog-missing",
+    "catalog-candidate-limit",
+    "catalog-duplicate-or-missing-key",
+    "catalog-identity-mismatch",
+    "conflicting-observations",
+    "no-unambiguous-footer-evidence",
+    "two-distinct-captures-required",
+    "catalog-fields-incomplete",
+    "printing-or-variant-ambiguous",
+    "no-catalog-printing-match",
+    "catalog-fields-match",
+    "unknown",
+  ],
   status: [
     "idle",
     "preparing",
@@ -76,6 +93,13 @@ const booleanFields = [
   "budgetExhausted",
 ] as const;
 const numericBounds = {
+  printingRegions: 2,
+  printingObservations: 8,
+  printingNativeEdge: 16384,
+  printingRegionWidth: 16384,
+  printingRegionHeight: 16384,
+  printingHighlightPercent: 100,
+  printingEdgeEnergyPercent: 100,
   presentationSnapshots: 1e9,
   presentationMs: 3600000,
   presentationMaxMs: 3600000,
@@ -170,7 +194,10 @@ export function sanitizeDiagnosticFields(input: unknown): DiagnosticFields {
       value <= numericBounds[key]
     ) {
       output[key] =
-        key.endsWith("Ms") || key === "progress"
+        key.endsWith("Ms") ||
+        key === "progress" ||
+        key === "printingHighlightPercent" ||
+        key === "printingEdgeEnergyPercent"
           ? Math.round(value * 100) / 100
           : Math.floor(value);
     }

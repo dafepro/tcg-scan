@@ -1,3 +1,4 @@
+import { parsePrintingEvidence } from "./printing-evidence";
 import { CONDITIONS, FINISHES } from "../types";
 import { CARD_IMAGE_HOSTS as IMAGE_HOSTS } from "./provider-image-policy";
 import type {
@@ -103,6 +104,7 @@ function parseCard(v: unknown): Card {
 function parsePrintingRead(
   v: unknown,
   game: Game,
+  eventId?: string,
 ): CollectionEntry["printingRead"] {
   if (v === undefined) return undefined;
   if (
@@ -120,6 +122,7 @@ function parsePrintingRead(
   )
     throw new Error("Backup contains an invalid printing read.");
   return {
+    evidence: parsePrintingEvidence(v.evidence, eventId),
     referenceId: str(v.referenceId),
     setName: str(v.setName),
     setCode: str(v.setCode),
@@ -180,7 +183,11 @@ export function parseBackup(text: string): AppData {
       verification:
         v.verification === "identity-only" ? "identity-only" : undefined,
       scanEventId: optionalStr(v.scanEventId, 200),
-      printingRead: parsePrintingRead(v.printingRead, (v.card as Card).game),
+      printingRead: parsePrintingRead(
+        v.printingRead,
+        (v.card as Card).game,
+        optionalStr(v.scanEventId, 200),
+      ),
     };
   });
   const scanIds = collection.flatMap((entry) =>

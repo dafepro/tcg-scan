@@ -77,6 +77,8 @@ function harness() {
   }));
   const isCurrent = vi.fn(() => true);
   const onStatus = vi.fn<(eventId: string, status: string) => void>();
+  const onDiagnostics =
+    vi.fn<(eventId: string, result: PrintingResolution) => void>();
   const onResolution = vi.fn<
     (eventId: string, result: PrintingResolution) => string | undefined
   >(() => undefined);
@@ -85,6 +87,7 @@ function harness() {
     reader,
     isCurrent,
     onStatus,
+    onDiagnostics,
     onResolution,
   });
   return {
@@ -95,6 +98,7 @@ function harness() {
     catalog,
     isCurrent,
     onStatus,
+    onDiagnostics,
     onResolution,
   };
 }
@@ -126,6 +130,87 @@ describe("printing session coordination", () => {
     expect(h.session.needs("event")).toBe(false);
     expect(await h.session.offer(frame(3))).toBe(false);
     expect(h.read).toHaveBeenCalledTimes(2);
+    h.session.dispose();
+  });
+  it("reports unresolved reasons and catalog provenance without claiming acceptance", async () => {
+    const h = harness();
+    const provenance = {
+      schemaVersion: 1 as const,
+      snapshotId: "sha256:" + "a".repeat(64),
+      provider: "fixture-provider",
+      scope: "fixture-identity",
+      fetchedAt: "2026-10-13T03:30:00.000Z",
+      stale: false,
+      completeWithinScope: true,
+      candidateCount: 1,
+    };
+    h.catalog.mockResolvedValue({
+      candidates: [ref],
+      catalogCompleteForIdentity: true,
+      scope: "fixture-identity",
+      provenance,
+    });
+    await h.session.offer(frame());
+    expect(h.onDiagnostics).toHaveBeenCalledOnce();
+    expect(h.onDiagnostics.mock.calls[0]).toMatchObject([
+      "event",
+      {
+        state: "unresolved",
+        reasons: ["two-distinct-captures-required"],
+        catalogProvenance: provenance,
+        priceEligible: false,
+      },
+    ]);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    await h.session.offer(frame(2));
+    expect(h.onResolution.mock.calls[0][1].catalogProvenance).toEqual(
+      provenance,
+    );
+    expect(h.onDiagnostics).toHaveBeenCalledTimes(2);
+    h.session.dispose();
+  });
+  it("isolates mutable or throwing diagnostics from evidence and acceptance", async () => {
+    const h = harness();
+    h.onDiagnostics.mockImplementationOnce((_event, result) => {
+      result.state = "catalog-printing-read";
+      result.evidence[0].fields.collectorNumber = "999";
+      result.evidence[0].frameId = "modified";
+    });
+    await h.session.offer(frame());
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.onDiagnostics.mockImplementationOnce(() => {
+      throw new Error("Diagnostics offline");
+    });
+    await h.session.offer(frame(2));
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    expect(
+      h.onResolution.mock.calls[0][1].evidence[0].fields.collectorNumber,
+    ).toBe("25");
+    expect(h.onResolution.mock.calls[0][1].evidence[0].frameId).toBe("frame-1");
+    expect(h.session.busy).toBe(false);
+    h.session.dispose();
+  });
+  it("does not report stale or cancelled reads as region diagnostics", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const offered = h.session.offer(frame());
+    const original = observed(h.read.mock.calls[0][0]);
+    h.session.cancel();
+    pending.resolve(original);
+    expect(await offered).toBe(false);
+    expect(h.onDiagnostics).not.toHaveBeenCalled();
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(h.session.busy).toBe(false);
+    h.session.dispose();
+  });
+  it("rechecks lifecycle if a diagnostics subscriber cancels the session", async () => {
+    const h = harness();
+    await h.session.offer(frame());
+    h.onDiagnostics.mockImplementationOnce(() => h.session.cancel());
+    expect(await h.session.offer(frame(2))).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(success(h.onStatus)).toHaveLength(0);
     h.session.dispose();
   });
   it("drops incoming frames while one offer is running instead of enqueueing them", async () => {

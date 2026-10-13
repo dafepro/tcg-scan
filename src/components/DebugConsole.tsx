@@ -20,6 +20,15 @@ const themes: Array<{ value: AppTheme; label: string }> = [
   { value: "violet", label: "Violet" },
 ];
 const fieldLabels: Record<keyof DiagnosticFields, string> = {
+  printingState: "Printing result",
+  printingReason: "Printing unresolved reason",
+  printingRegions: "Measured text regions",
+  printingObservations: "Capture IDs observed",
+  printingNativeEdge: "Native source short edge",
+  printingRegionWidth: "Last text region width",
+  printingRegionHeight: "Last text region height",
+  printingHighlightPercent: "Bright-clipped pixels (%)",
+  printingEdgeEnergyPercent: "Adjacent-pixel contrast (%)",
   status: "State",
   game: "Game",
   captureFlow: "Capture",
@@ -114,7 +123,8 @@ function RuntimeDiagnostics() {
         Current app observations. Missing values have not been measured. Events
         stay in memory on this device. Published snapshot prep measures only the
         periodic UI data snapshots, not all application work or browser
-        rendering.
+        rendering. Printing-region measurements describe pixels, not calibrated
+        readability, glare or finish.
       </p>
       <div className="debug-snapshots">
         {Object.entries(snapshot.latest).map(([source, fields]) => (

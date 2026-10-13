@@ -79,8 +79,10 @@ async function boundedBody(
     compressed = encoding !== undefined && encoding !== "identity";
   // Fetch exposes decoded bytes. Common static hosts compress JSON, so their
   // Content-Length is a transport length, never the expected decoded size.
+  // Zstandard is also negotiated by browsers and used by some static CDNs.
+  // All encodings still require the exact decoded byte count and pinned hashes.
   if (
-    (compressed && !["gzip", "br", "deflate"].includes(encoding)) ||
+    (compressed && !["gzip", "br", "deflate", "zstd"].includes(encoding)) ||
     (rawLength !== null &&
       (!/^\d+$/.test(rawLength) ||
         !Number.isSafeInteger(Number(rawLength)) ||

@@ -42,6 +42,7 @@ jobs:
         timeout-minutes: 5
       - run: npm run test:e2e
         env:
+          PLAYWRIGHT_TEST_PORT: ${{ vars.PLAYWRIGHT_TEST_PORT || '24173' }}
           RUN_LIVE_OCR: "1"
           RUN_LIVE_VISION: "1"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

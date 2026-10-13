@@ -137,3 +137,5 @@ Verify in the actual HTTPS application URL, with a clean browser profile:
 5. Confirm real-device camera and local scanning separately. Browser storage belongs to that origin and device; it does not migrate from localhost or another dev URL. Do not promise service-worker offline startup or complete offline catalog/pricing access.
 
 Record the final URL, chosen base path, build/report/checksum identifiers and which checks actually ran. A successful local packager test does not stand in for deployed-browser or physical-card QA.
+
+Browser CI runs its own production-preview server at `PLAYWRIGHT_TEST_PORT` (repository variable; default 24173 in CI). Local checks can set the same environment variable. A server already using that port is an explicit test prerequisite failure; the suite never silently reuses an unrelated application.

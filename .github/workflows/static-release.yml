@@ -14,15 +14,15 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && vars.DEPLOY_REQUESTS_ENABLED == 'true'
+    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && (github.run_attempt == 1 || github.triggering_actor == 'dafepro' || (github.run_attempt == 2 && github.triggering_actor == 'github-actions[bot]' && toJSON(github.event.repository.private) == 'false')) && vars.DEPLOY_REQUESTS_ENABLED == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       build_runner: ${{ inputs.build_runner }}
   publish:
     name: Publish retained static site
     needs: verify
-    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && vars.DEPLOY_REQUESTS_ENABLED == 'true'
-    runs-on: ${{ (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
+    if: github.repository == 'dafepro/tcg-scan' && github.actor_id == '313492551' && github.ref == 'refs/heads/main' && (github.run_attempt == 1 || github.triggering_actor == 'dafepro' || (github.run_attempt == 2 && github.triggering_actor == 'github-actions[bot]' && toJSON(github.event.repository.private) == 'false')) && vars.DEPLOY_REQUESTS_ENABLED == 'true'
+    runs-on: ${{ !(github.run_attempt == 2 && github.triggering_actor == 'github-actions[bot]') && (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
     timeout-minutes: 45
     permissions:
       contents: write
@@ -55,3 +55,4 @@ jobs:
       - name: Remove temporary release files
         if: always()
         run: rm -rf -- "$RUNNER_TEMP/static-reference" "$RUNNER_TEMP/static-dist" "$RUNNER_TEMP/static-staged" "$RUNNER_TEMP/static-release"
+

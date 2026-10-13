@@ -1,5 +1,5 @@
 name: CI
-# The owner can run trusted main on Mac (default) or explicitly select Ubuntu.
+# Owner-dispatched main prefers Mac; one verified bot retry may use public Ubuntu.
 on:
   workflow_call:
     inputs:
@@ -25,8 +25,9 @@ jobs:
       github.repository == 'dafepro/tcg-scan' &&
       github.actor_id == '313492551' &&
       github.ref == 'refs/heads/main' &&
+      (github.run_attempt == 1 || github.triggering_actor == 'dafepro' || (github.run_attempt == 2 && github.triggering_actor == 'github-actions[bot]' && toJSON(github.event.repository.private) == 'false')) &&
       github.event_name == 'workflow_dispatch'
-    runs-on: ${{ (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ !(github.run_attempt == 2 && github.triggering_actor == 'github-actions[bot]') && (inputs.build_runner == 'mac' || (inputs.build_runner != 'github' && vars.BUILD_RUNNER != 'github')) && fromJSON('["self-hosted","macOS","ARM64","dcarrell-mac"]') || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -54,3 +55,4 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+

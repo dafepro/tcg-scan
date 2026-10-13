@@ -1,0 +1,36 @@
+name: Recover an unstarted TCG source Mac queue
+on:
+  workflow_run:
+    workflows: [CI, Build a retained tcg-scan static release]
+    types: [requested]
+permissions: {}
+concurrency:
+  group: tcg-source-queue-fallback-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+jobs:
+  watch:
+    if: >-
+      github.repository == 'dafepro/tcg-scan' &&
+      toJSON(github.event.repository.private) == 'false' &&
+      github.event.workflow_run.head_repository.full_name == 'dafepro/tcg-scan' &&
+      github.event.workflow_run.actor.id == 313492551 &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # workflow_run uses trusted default-branch code, never a PR checkout.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Bound the unstarted Mac queue and verify cancellation before retry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/source_queue_fallback.py

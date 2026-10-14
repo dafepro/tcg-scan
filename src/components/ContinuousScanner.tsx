@@ -57,8 +57,10 @@ import { ReferenceQuotes } from "./ReferenceQuotes";
 import { PrintingEvidenceDetails } from "./PrintingEvidenceDetails";
 import {
   cameraFailureMessage,
+  printingPromptStatus,
   scannerTrackPresentation,
 } from "./continuous-scanner-ui";
+import type { LivePrintingPrompt } from "./continuous-scanner-ui";
 import { preflightImage } from "../lib/image-header";
 import {
   CaptureCompatibilityError,
@@ -196,6 +198,7 @@ export default function ContinuousScanner({
   const [size, setSize] = useState({ width: 1280, height: 720 });
   const [mediaSize, setMediaSize] = useState({ width: 1280, height: 720 });
   const [saved, setSaved] = useState<Saved[]>([]);
+  const [printingPrompt, setPrintingPrompt] = useState<LivePrintingPrompt>();
   const receiptEvents = useRef(new Map<string, boolean>());
   const [sessionCount, setSessionCount] = useState(0);
   const [timings, setTimings] = useState<VisionResult["timings"]>();
@@ -254,6 +257,8 @@ export default function ContinuousScanner({
   }, [refreshPacks]);
   const cancelPrintingStatus = useCallback(() => {
     printing.current?.cancel();
+    setPrintingPrompt(undefined);
+    setAnnouncement((old) => ({ sequence: old.sequence + 1, text: "" }));
     setSaved((old) =>
       old.map((item) =>
         item.printingStatus === "Reading printed identifiers locally…"
@@ -398,6 +403,9 @@ export default function ContinuousScanner({
     // onUndo is synchronous: retire work before yielding, but do not reset
     // the existing prompt budget when durable removal fails.
     printing.current?.forget(item.eventId);
+    setPrintingPrompt((old) =>
+      old?.eventId === item.eventId ? undefined : old,
+    );
     session.current?.undo(item.eventId);
     setTracks((old) =>
       old.map((track) =>
@@ -472,7 +480,16 @@ export default function ContinuousScanner({
         const track = session.current
           ?.snapshot()
           .find((item) => item.eventId === eventId);
-        if (track?.reference) announce(`${track.reference.name}. ${message}`);
+        if (track?.reference) {
+          setPrintingPrompt({ eventId, name: track.reference.name, message });
+          announce(`${track.reference.name}. ${message}`);
+        }
+      },
+      onGuidanceComplete: (eventId) => {
+        if (gen === generation.current)
+          setPrintingPrompt((old) =>
+            old?.eventId === eventId ? undefined : old,
+          );
       },
       onStatus: (eventId, status) =>
         setSaved((old) =>
@@ -530,7 +547,7 @@ export default function ContinuousScanner({
         track.status === "added" &&
         track.reference &&
         !printedEvents.current.has(track.eventId) &&
-        printing.current?.ready(track.eventId, capturedAt) &&
+        printing.current?.wantsFrame(track.eventId, capturedAt) &&
         evidence?.autoEligible &&
         evidence.printingCrop &&
         (evidence.printingSourceMinEdge ?? 0) >= 480 &&
@@ -545,7 +562,6 @@ export default function ContinuousScanner({
           image: evidence.printingCrop,
           sourceMinEdge: evidence.printingSourceMinEdge!,
         });
-        if (printing.current.busy) break;
       }
     }
   }
@@ -566,13 +582,12 @@ export default function ContinuousScanner({
       session.current === scan;
     if (!scan || !current()) return;
     const { capturedAt, image, transport } = context.capture;
-    const printingTargets = printing.current?.busy
-      ? []
-      : pendingPrintingTracks(
-          scan.snapshot(),
-          printedEvents.current,
-          (eventId) => printing.current?.ready(eventId, capturedAt) === true,
-        );
+    const printingTargets = pendingPrintingTracks(
+      scan.snapshot(),
+      printedEvents.current,
+      (eventId) => printing.current?.wantsFrame(eventId, capturedAt) === true,
+      (eventId) => printing.current?.priority(eventId) ?? 0,
+    );
     try {
       const result = await local.analyze(image, {
         game,
@@ -765,15 +780,13 @@ export default function ContinuousScanner({
         setCaptureTransport(pixels.transport);
         const capturedAt = pixels.capturedAt,
           frameId = `${gen}:${++captureSequence.current}`;
-        const printingTargets = printing.current?.busy
-          ? []
-          : (session.current?.snapshot() ?? []).filter(
-              (t) =>
-                t.visible &&
-                t.status === "added" &&
-                !printedEvents.current.has(t.eventId) &&
-                printing.current?.ready(t.eventId, capturedAt),
-            );
+        const printingTargets = pendingPrintingTracks(
+          session.current?.snapshot() ?? [],
+          printedEvents.current,
+          (eventId) =>
+            printing.current?.wantsFrame(eventId, capturedAt) === true,
+          (eventId) => printing.current?.priority(eventId) ?? 0,
+        );
         const result = await local.analyze(pixels.image, {
           game,
           mode,
@@ -811,7 +824,7 @@ export default function ContinuousScanner({
             track.status === "added" &&
             track.reference &&
             !printedEvents.current.has(track.eventId) &&
-            printing.current?.ready(track.eventId, capturedAt) &&
+            printing.current?.wantsFrame(track.eventId, capturedAt) &&
             evidence?.autoEligible &&
             evidence.printingCrop &&
             (evidence.printingSourceMinEdge ?? 0) >= 480 &&
@@ -826,7 +839,6 @@ export default function ContinuousScanner({
               image: evidence.printingCrop,
               sourceMinEdge: evidence.printingSourceMinEdge!,
             });
-            if (printing.current?.busy) break;
           }
         }
         session.current!.releasePixels();
@@ -992,6 +1004,8 @@ export default function ContinuousScanner({
       setPhotoMatches([]);
       setTracks([]);
       setSaved([]);
+      setPrintingPrompt(undefined);
+      setAnnouncement((old) => ({ sequence: old.sequence + 1, text: "" }));
       receiptEvents.current.clear();
       setSessionCount(0);
       setShowUnmatched(false);
@@ -1015,6 +1029,13 @@ export default function ContinuousScanner({
           onFrame: (context) => learnedFrame(context, local, gen),
           onTransport: (transport) => {
             if (gen === generation.current) setCaptureTransport(transport);
+          },
+          onDiscard: (_reason, total) => {
+            if (gen === generation.current)
+              diagnostics.record("live", "warning", {
+                reason: "capture-failed",
+                dropped: total,
+              });
           },
           onError: (e) => {
             if (gen !== generation.current) return;
@@ -1049,6 +1070,7 @@ export default function ContinuousScanner({
     )
       return;
     inputHeldRef.current = true;
+    printing.current?.discardPending();
     setInputHeld(true);
     holdLiveVideoInput({
       source,
@@ -2222,7 +2244,18 @@ export default function ContinuousScanner({
           {active && paused && <div className="live-paused">Paused</div>}
         </div>
       </div>
-      <p className="live-status">{message}</p>
+      <p className="live-status">
+        {printingPromptStatus(
+          printingPrompt,
+          tracks,
+          active && !paused && !inputHeld,
+          saved.some(
+            (item) =>
+              item.eventId === printingPrompt?.eventId &&
+              item.printingStatus === "Reading printed identifiers locally…",
+          ),
+        ) ?? message}
+      </p>
       {onFindCard && (needsSetup || error || unmatchedCount > 0) && (
         <button className="button subtle" onClick={onFindCard}>
           Find a card manually <ChevronRight size={15} />
@@ -2319,7 +2352,9 @@ export default function ContinuousScanner({
                 <small>
                   {item.undone
                     ? "Undone"
-                    : "Saved locally · condition and finish unknown"}
+                    : item.printingReference
+                      ? "Saved locally · condition and finish unknown"
+                      : "Saved locally · printing, condition and finish unconfirmed"}
                 </small>
                 {!item.undone && item.printingStatus && (
                   <small>{item.printingStatus}</small>

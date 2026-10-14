@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CaptureCompatibilityError,
   CaptureFrameExpiredError,
+  CaptureFrameClockAheadError,
   CaptureFreshnessError,
   CaptureRateLimitError,
   CaptureResolutionError,
@@ -500,7 +501,11 @@ describe("native camera source freshness", () => {
             ? 1001
             : 1000;
       source.present({ presentationTime }, callbackAt);
-      await expect(result).rejects.toThrow(kind.startsWith("future") ? /future native frame timestamps/ : /stale frame callback/);
+      await expect(result).rejects.toThrow(
+        kind.startsWith("future")
+          ? /future native frame timestamps/
+          : /stale frame callback/,
+      );
       expect(h.frames).toHaveLength(0);
       expect(h.createCanvas).not.toHaveBeenCalled();
     },
@@ -519,42 +524,85 @@ describe("native camera source freshness", () => {
     expect(h.createCanvas).not.toHaveBeenCalled();
   });
 
-  it.each(["callback", "presentation", "both"] as const)("distinguishes age-only %s expiry at the exact 250 ms boundary", async (kind) => {
-    for (const age of [250, 251]) {
-      const h = harness(), source = h.video(64, 64, false);
-      const result = h.capture.capture(source, 1920, h.takeBuffer);
-      source.present({ presentationTime: kind === "callback" ? 1000 : 1000 - age }, kind === "presentation" ? 1000 : 1000 - age);
-      if (age === 250) await expect(result).resolves.toMatchObject({ transport: "videoframe-pool" });
-      else {
-        const error = await result.catch(error => error);
-        expect(error).toBeInstanceOf(CaptureFrameExpiredError);
-        expect(error).toBeInstanceOf(CaptureFreshnessError);
-        expect(error.expiry).toMatchObject({ stage: "callback", checkedAt: 1000, callbackAgeMs: kind === "presentation" ? 0 : age, presentationAgeMs: kind === "callback" ? 0 : age });
-        expect(Object.isFrozen(error.expiry)).toBe(true);
-        expect(Object.isFrozen(error.expiry.sourceFrame)).toBe(true);
-        expect(Object.keys(error.expiry).sort()).toEqual(["callbackAgeMs", "checkedAt", "presentationAgeMs", "sourceFrame", "stage"]);
-        expect(h.frames).toHaveLength(0);
-        expect(h.takeBuffer).not.toHaveBeenCalled();
+  it.each(["callback", "presentation", "both"] as const)(
+    "distinguishes age-only %s expiry at the exact 250 ms boundary",
+    async (kind) => {
+      for (const age of [250, 251]) {
+        const h = harness(),
+          source = h.video(64, 64, false);
+        const result = h.capture.capture(source, 1920, h.takeBuffer);
+        source.present(
+          { presentationTime: kind === "callback" ? 1000 : 1000 - age },
+          kind === "presentation" ? 1000 : 1000 - age,
+        );
+        if (age === 250)
+          await expect(result).resolves.toMatchObject({
+            transport: "videoframe-pool",
+          });
+        else {
+          const error = await result.catch((error) => error);
+          expect(error).toBeInstanceOf(CaptureFrameExpiredError);
+          expect(error).toBeInstanceOf(CaptureFreshnessError);
+          expect(error.expiry).toMatchObject({
+            stage: "callback",
+            checkedAt: 1000,
+            callbackAgeMs: kind === "presentation" ? 0 : age,
+            presentationAgeMs: kind === "callback" ? 0 : age,
+          });
+          expect(Object.isFrozen(error.expiry)).toBe(true);
+          expect(Object.isFrozen(error.expiry.sourceFrame)).toBe(true);
+          expect(Object.keys(error.expiry).sort()).toEqual([
+            "callbackAgeMs",
+            "checkedAt",
+            "presentationAgeMs",
+            "sourceFrame",
+            "stage",
+          ]);
+          expect(h.frames).toHaveLength(0);
+          expect(h.takeBuffer).not.toHaveBeenCalled();
+        }
+        h.capture.dispose();
       }
-      h.capture.dispose();
-    }
-  });
+    },
+  );
 
   it.each([
-    { now: 524.3999999761581, callbackAt: 520.6, presentationTime: 524.4, presentedFrames: 6, mediaTime: .397014 },
-    { now: 2356.699999988079, callbackAt: 2353.58, presentationTime: 2356.7, presentedFrames: 27, mediaTime: 2.166667 },
-  ])("accepts the observed native subtraction residue without rewriting source evidence: %j", async sample => {
-    const h = harness(), source = h.video(64, 64, false);
-    h.tick(sample.now - h.now()); expect(h.now()).toBe(sample.now);
-    const result = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present(sample, sample.callbackAt);
-    const pixels = await result;
-    expect(pixels.capturedAt).toBe(sample.now);
-    expect(pixels.sourceFrame).toEqual({ presentedFrames: sample.presentedFrames, mediaTime: sample.mediaTime, callbackAt: sample.callbackAt, presentationTime: sample.presentationTime });
-    expect(h.capture.isSourceCurrent()).toBe(true);
-    expect(h.frames[0].close).toHaveBeenCalledOnce();
-    h.capture.dispose();
-  });
+    {
+      now: 524.3999999761581,
+      callbackAt: 520.6,
+      presentationTime: 524.4,
+      presentedFrames: 6,
+      mediaTime: 0.397014,
+    },
+    {
+      now: 2356.699999988079,
+      callbackAt: 2353.58,
+      presentationTime: 2356.7,
+      presentedFrames: 27,
+      mediaTime: 2.166667,
+    },
+  ])(
+    "accepts the observed native subtraction residue without rewriting source evidence: %j",
+    async (sample) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      h.tick(sample.now - h.now());
+      expect(h.now()).toBe(sample.now);
+      const result = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present(sample, sample.callbackAt);
+      const pixels = await result;
+      expect(pixels.capturedAt).toBe(sample.now);
+      expect(pixels.sourceFrame).toEqual({
+        presentedFrames: sample.presentedFrames,
+        mediaTime: sample.mediaTime,
+        callbackAt: sample.callbackAt,
+        presentationTime: sample.presentationTime,
+      });
+      expect(h.capture.isSourceCurrent()).toBe(true);
+      expect(h.frames[0].close).toHaveBeenCalledOnce();
+      h.capture.dispose();
+    },
+  );
 
   // At 1000 ms, one double ULP is 2^-43 ms. All these offsets are exactly
   // representable, including the very next double beyond the correction bound.
@@ -563,169 +611,292 @@ describe("native camera source freshness", () => {
     { lead: 2 ** -24, accepted: true },
     { lead: 2 ** -24 + 2 ** -43, accepted: false },
     { lead: 1e-6, accepted: false },
-    { lead: .0001, accepted: false },
-    { lead: .1, accepted: false },
+    { lead: 0.0001, accepted: false },
+    { lead: 0.1, accepted: false },
     { lead: 1, accepted: false },
-  ])("bounds only presentation arithmetic equality: %j", async ({ lead, accepted }) => {
-    const h = harness(), source = h.video(64, 64, false);
-    const result = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present({ presentationTime: 1000 + lead }, 1000);
-    if (accepted) {
-      const pixels = await result;
-      expect(pixels.sourceFrame!.presentationTime).toBe(1000 + lead);
-      expect(h.capture.isSourceCurrent()).toBe(true);
-    } else {
-      const error = await result.catch(error => error);
-      expect(error).toBeInstanceOf(CaptureFreshnessError);
-      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-      expect(error.message).toMatch(/future native frame timestamps/);
-      expect(h.frames).toHaveLength(0);
-    }
-    h.capture.dispose();
-  });
+  ])(
+    "bounds only presentation arithmetic equality: %j",
+    async ({ lead, accepted }) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      const result = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present({ presentationTime: 1000 + lead }, 1000);
+      if (accepted) {
+        const pixels = await result;
+        expect(pixels.sourceFrame!.presentationTime).toBe(1000 + lead);
+        expect(h.capture.isSourceCurrent()).toBe(true);
+      } else {
+        const error = await result.catch((error) => error);
+        expect(error).toBeInstanceOf(CaptureFreshnessError);
+        expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+        expect(error.message).toMatch(/future native frame timestamps/);
+        expect(h.frames).toHaveLength(0);
+      }
+      h.capture.dispose();
+    },
+  );
 
   it("keeps even a one-ULP future callback timestamp strictly fatal", async () => {
-    const h = harness(), source = h.video(64, 64, false);
+    const h = harness(),
+      source = h.video(64, 64, false);
     const result = h.capture.capture(source, 1920, h.takeBuffer);
     source.present({ presentationTime: 1000 }, 1000 + 2 ** -43);
-    const error = await result.catch(error => error);
+    const error = await result.catch((error) => error);
     expect(error).toBeInstanceOf(CaptureFreshnessError);
     expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
     expect(error.message).toMatch(/future native frame timestamps/);
-    expect(h.frames).toHaveLength(0); h.capture.dispose();
+    expect(h.frames).toHaveLength(0);
+    h.capture.dispose();
   });
 
-  it.each(["clock", "callback", "presentation"] as const)("keeps even one-ULP %s regression strictly fatal", async kind => {
-    const h = harness(), source = h.video(64, 64, false);
-    const first = h.capture.capture(source, 1920, h.takeBuffer); source.present(); await first;
-    if (kind === "clock") h.tick(-(2 ** -43));
-    const next = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present({ presentationTime: kind === "presentation" ? 1000 - 2 ** -43 : 1000 }, kind === "callback" ? 1000 - 2 ** -43 : 1000);
-    const error = await next.catch(error => error);
-    expect(error).toBeInstanceOf(CaptureFreshnessError);
-    expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-    expect(error.message).toMatch(/regressed/);
-    expect(h.frames).toHaveLength(1); h.capture.dispose();
-  });
+  it.each(["clock", "callback", "presentation"] as const)(
+    "keeps even one-ULP %s regression strictly fatal",
+    async (kind) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      const first = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present();
+      await first;
+      if (kind === "clock") h.tick(-(2 ** -43));
+      const next = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present(
+        { presentationTime: kind === "presentation" ? 1000 - 2 ** -43 : 1000 },
+        kind === "callback" ? 1000 - 2 ** -43 : 1000,
+      );
+      const error = await next.catch((error) => error);
+      expect(error).toBeInstanceOf(CaptureFreshnessError);
+      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      expect(error.message).toMatch(/regressed/);
+      expect(h.frames).toHaveLength(1);
+      h.capture.dispose();
+    },
+  );
 
   it("does not relax native identity advancement for numerical-equality captures", async () => {
-    const h = harness(), source = h.video(64, 64, false);
-    const metadata = { presentedFrames: 10, mediaTime: 1, presentationTime: 1000 + 2 ** -24 };
-    const first = h.capture.capture(source, 1920, h.takeBuffer); source.present(metadata, 1000); await first;
-    const repeated = h.capture.capture(source, 1920, h.takeBuffer); source.present(metadata, 1000);
+    const h = harness(),
+      source = h.video(64, 64, false);
+    const metadata = {
+      presentedFrames: 10,
+      mediaTime: 1,
+      presentationTime: 1000 + 2 ** -24,
+    };
+    const first = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(metadata, 1000);
+    await first;
+    const repeated = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(metadata, 1000);
     await expect(repeated).rejects.toThrow(/repeated or regressed/);
-    expect(h.frames).toHaveLength(1); h.capture.dispose();
+    expect(h.frames).toHaveLength(1);
+    h.capture.dispose();
   });
 
   it("keeps source replacement fatal before applying numerical equality", async () => {
-    const h = harness(), source = h.video(64, 64, false);
+    const h = harness(),
+      source = h.video(64, 64, false);
     const result = h.capture.capture(source, 1920, h.takeBuffer);
     source.src = "replacement";
     source.present({ presentationTime: 1000 + 2 ** -24 }, 1000);
     await expect(result).rejects.toThrow(/source changed/);
-    expect(h.frames).toHaveLength(0); h.capture.dispose();
-  });
-
-  it.each(["before-copy", "after-copy"] as const)("keeps the 250 ms age gate strict to one ULP at %s", async stage => {
-    const h = harness(), source = h.video(64, 64, false);
-    const advance = () => h.tick(250 + 2 ** -42); // One ULP above 1250 ms.
-    if (stage === "after-copy") h.behavior.copy = async () => advance();
-    const result = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present();
-    if (stage === "before-copy") advance();
-    await expect(result).rejects.toMatchObject({ name: "CaptureFrameExpiredError", expiry: { stage } });
-    expect(h.frames).toHaveLength(stage === "after-copy" ? 1 : 0);
-    if (stage === "after-copy") expect(h.frames[0].close).toHaveBeenCalledOnce();
+    expect(h.frames).toHaveLength(0);
     h.capture.dispose();
   });
 
-  it.each([NaN, Infinity, -1, 1001])("keeps invalid/future timestamps fatal even when the other timestamp expired: %s", async invalid => {
-    for (const field of ["callback", "presentation"] as const) {
-      const h = harness(), source = h.video(64, 64, false);
+  it.each(["before-copy", "after-copy"] as const)(
+    "keeps the 250 ms age gate strict to one ULP at %s",
+    async (stage) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      const advance = () => h.tick(250 + 2 ** -42); // One ULP above 1250 ms.
+      if (stage === "after-copy") h.behavior.copy = async () => advance();
       const result = h.capture.capture(source, 1920, h.takeBuffer);
-      source.present({ presentationTime: field === "presentation" ? invalid : 749 }, field === "callback" ? invalid : 749);
-      const error = await result.catch(error => error);
-      expect(error).toBeInstanceOf(CaptureFreshnessError);
-      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-      expect(h.frames).toHaveLength(0);
+      source.present();
+      if (stage === "before-copy") advance();
+      await expect(result).rejects.toMatchObject({
+        name: "CaptureFrameExpiredError",
+        expiry: { stage },
+      });
+      expect(h.frames).toHaveLength(stage === "after-copy" ? 1 : 0);
+      if (stage === "after-copy")
+        expect(h.frames[0].close).toHaveBeenCalledOnce();
       h.capture.dispose();
-    }
-  });
+    },
+  );
+
+  it.each([NaN, Infinity, -1, 1001])(
+    "keeps invalid/future timestamps fatal even when the other timestamp expired: %s",
+    async (invalid) => {
+      for (const field of ["callback", "presentation"] as const) {
+        const h = harness(),
+          source = h.video(64, 64, false);
+        const result = h.capture.capture(source, 1920, h.takeBuffer);
+        source.present(
+          { presentationTime: field === "presentation" ? invalid : 749 },
+          field === "callback" ? invalid : 749,
+        );
+        const error = await result.catch((error) => error);
+        expect(error).toBeInstanceOf(CaptureFreshnessError);
+        expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+        expect(h.frames).toHaveLength(0);
+        h.capture.dispose();
+      }
+    },
+  );
 
   it("consumes an expired callback identity without treating it as live-current proof", async () => {
-    const h = harness(), source = h.video(64, 64, false);
+    const h = harness(),
+      source = h.video(64, 64, false);
     const expired = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present({ presentedFrames: 10, mediaTime: 1, presentationTime: 749 }, 749);
+    source.present(
+      { presentedFrames: 10, mediaTime: 1, presentationTime: 749 },
+      749,
+    );
     await expect(expired).rejects.toBeInstanceOf(CaptureFrameExpiredError);
     expect(h.capture.isSourceCurrent()).toBe(false);
     const repeated = h.capture.capture(source, 1920, h.takeBuffer);
     source.present({ presentedFrames: 10, mediaTime: 1 });
-    const error = await repeated.catch(error => error);
+    const error = await repeated.catch((error) => error);
     expect(error).toBeInstanceOf(CaptureFreshnessError);
     expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
     expect(h.frames).toHaveLength(0);
     const fresh = h.capture.capture(source, 1920, h.takeBuffer);
     source.present({ presentedFrames: 11, mediaTime: 1.1 });
-    await expect(fresh).resolves.toMatchObject({ sourceFrame: { presentedFrames: 11, mediaTime: 1.1 } });
+    await expect(fresh).resolves.toMatchObject({
+      sourceFrame: { presentedFrames: 11, mediaTime: 1.1 },
+    });
     expect(source.requestVideoFrameCallback).toHaveBeenCalledTimes(3);
     expect(h.capture.isSourceCurrent()).toBe(true);
     h.capture.dispose();
   });
 
-  it.each([NaN, Infinity, -1])("keeps an invalid monotonic check clock fatal: %s", async now => {
-    const h = harness(), source = h.video(64, 64, false);
-    const result = h.capture.capture(source, 1920, h.takeBuffer);
-    h.tick(now - 1000); source.present({ presentationTime: 749 }, 749);
-    const error = await result.catch(error => error);
-    expect(error).toBeInstanceOf(CaptureFreshnessError);
-    expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-    expect(error.message).toMatch(/clock is invalid/);
-    expect(h.frames).toHaveLength(0); h.capture.dispose();
-  });
-
-  it.each(["counter", "media", "callback", "presentation", "clock"] as const)("keeps regressing %s fatal even when a frame has expired", async kind => {
-    const h = harness(), source = h.video(64, 64, false);
-    const first = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present({ presentedFrames: 10, mediaTime: 1 }); await first;
-    h.tick(500);
-    const next = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present({ presentedFrames: kind === "counter" ? 10 : 11, mediaTime: kind === "media" ? 1 : 2, presentationTime: kind === "presentation" ? 999 : 1000 }, kind === "callback" ? 999 : 1000);
-    if (kind === "clock") {
-      // The previous callback was valid but expired at 1500; checking at 1499
-      // must not turn a backwards check clock into another retryable expiry.
-      await expect(next).rejects.toBeInstanceOf(CaptureFrameExpiredError);
-      h.tick(-1);
-      const backwards = h.capture.capture(source, 1920, h.takeBuffer);
-      source.present({ presentedFrames: 12, mediaTime: 3, presentationTime: 1000 }, 1000);
-      const error = await backwards.catch(error => error);
-      expect(error).toBeInstanceOf(CaptureFreshnessError);
-      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-    } else {
-      const error = await next.catch(error => error);
-      expect(error).toBeInstanceOf(CaptureFreshnessError);
-      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-    }
+  it("discards a future callback and consumes its original identity before a bounded retry", async () => {
+    const h = harness(),
+      source = h.video(64, 64, false);
+    const rejected = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(
+      { presentedFrames: 10, mediaTime: 1, presentationTime: 1001 },
+      1000,
+    );
+    const error = await rejected.catch((error) => error);
+    expect(error).toBeInstanceOf(CaptureFrameClockAheadError);
+    expect(error.timing).toEqual({
+      checkedAt: 1000,
+      sourceFrame: {
+        presentedFrames: 10,
+        mediaTime: 1,
+        presentationTime: 1001,
+        callbackAt: 1000,
+      },
+    });
+    expect(h.capture.isSourceCurrent()).toBe(false);
+    h.tick(10);
+    const repeated = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(
+      { presentedFrames: 10, mediaTime: 1, presentationTime: 1010 },
+      1010,
+    );
+    await expect(repeated).rejects.toThrow(/repeated or regressed/);
+    expect(h.frames).toHaveLength(0);
+    const fresh = h.capture.capture(source, 1920, h.takeBuffer);
+    source.present(
+      { presentedFrames: 11, mediaTime: 1.1, presentationTime: 1010 },
+      1010,
+    );
+    await expect(fresh).resolves.toMatchObject({
+      sourceFrame: { presentedFrames: 11, mediaTime: 1.1 },
+    });
     expect(h.frames).toHaveLength(1);
     h.capture.dispose();
   });
 
+  it.each([NaN, Infinity, -1])(
+    "keeps an invalid monotonic check clock fatal: %s",
+    async (now) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      const result = h.capture.capture(source, 1920, h.takeBuffer);
+      h.tick(now - 1000);
+      source.present({ presentationTime: 749 }, 749);
+      const error = await result.catch((error) => error);
+      expect(error).toBeInstanceOf(CaptureFreshnessError);
+      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      expect(error.message).toMatch(/clock is invalid/);
+      expect(h.frames).toHaveLength(0);
+      h.capture.dispose();
+    },
+  );
+
+  it.each(["counter", "media", "callback", "presentation", "clock"] as const)(
+    "keeps regressing %s fatal even when a frame has expired",
+    async (kind) => {
+      const h = harness(),
+        source = h.video(64, 64, false);
+      const first = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present({ presentedFrames: 10, mediaTime: 1 });
+      await first;
+      h.tick(500);
+      const next = h.capture.capture(source, 1920, h.takeBuffer);
+      source.present(
+        {
+          presentedFrames: kind === "counter" ? 10 : 11,
+          mediaTime: kind === "media" ? 1 : 2,
+          presentationTime: kind === "presentation" ? 999 : 1000,
+        },
+        kind === "callback" ? 999 : 1000,
+      );
+      if (kind === "clock") {
+        // The previous callback was valid but expired at 1500; checking at 1499
+        // must not turn a backwards check clock into another retryable expiry.
+        await expect(next).rejects.toBeInstanceOf(CaptureFrameExpiredError);
+        h.tick(-1);
+        const backwards = h.capture.capture(source, 1920, h.takeBuffer);
+        source.present(
+          { presentedFrames: 12, mediaTime: 3, presentationTime: 1000 },
+          1000,
+        );
+        const error = await backwards.catch((error) => error);
+        expect(error).toBeInstanceOf(CaptureFreshnessError);
+        expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      } else {
+        const error = await next.catch((error) => error);
+        expect(error).toBeInstanceOf(CaptureFreshnessError);
+        expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      }
+      expect(h.frames).toHaveLength(1);
+      h.capture.dispose();
+    },
+  );
+
   it("discards expiry before copy and requests an entirely new callback", async () => {
-    const h = harness(), source = h.video(64, 64, false);
+    const h = harness(),
+      source = h.video(64, 64, false);
     const expired = h.capture.capture(source, 1920, h.takeBuffer);
-    source.present(); h.tick(251);
-    await expect(expired).rejects.toMatchObject({ expiry: { stage: "before-copy" } });
+    source.present();
+    h.tick(251);
+    await expect(expired).rejects.toMatchObject({
+      expiry: { stage: "before-copy" },
+    });
     expect(h.frames).toHaveLength(0);
     const next = h.capture.capture(source, 1920, h.takeBuffer);
     expect(source.requestVideoFrameCallback).toHaveBeenCalledTimes(2);
-    source.present(); await next;
+    source.present();
+    await next;
     expect(h.frames).toHaveLength(1);
     h.capture.dispose();
   });
 
   it("closes and discards an expired readback without retaining pixels in its metadata", async () => {
-    const h = harness(), source = h.video(64, 64);
+    const h = harness(),
+      source = h.video(64, 64);
     h.behavior.copy = async () => h.tick(251);
-    await expect(h.capture.capture(source, 1920, h.takeBuffer)).rejects.toMatchObject({ expiry: { stage: "after-copy", callbackAgeMs: 251, presentationAgeMs: 251 } });
+    await expect(
+      h.capture.capture(source, 1920, h.takeBuffer),
+    ).rejects.toMatchObject({
+      expiry: {
+        stage: "after-copy",
+        callbackAgeMs: 251,
+        presentationAgeMs: 251,
+      },
+    });
     expect(h.frames[0].close).toHaveBeenCalledOnce();
     expect(h.capture.busy).toBe(false);
     expect(h.capture.isSourceCurrent()).toBe(false);
@@ -733,41 +904,68 @@ describe("native camera source freshness", () => {
     const next = await h.capture.capture(source, 1920, h.takeBuffer);
     expect(next.sourceFrame!.presentedFrames).toBe(2);
     expect(h.frames).toHaveLength(2);
-    expect(h.frames.every(frame => frame.close.mock.calls.length === 1)).toBe(true);
+    expect(h.frames.every((frame) => frame.close.mock.calls.length === 1)).toBe(
+      true,
+    );
     h.capture.dispose();
   });
 
-  it.each(["layout", "source", "paused", "ended", "muted"] as const)("does not disguise a %s failure as recoverable readback expiry", async kind => {
-    const h = harness(), source = h.video(64, 64);
-    const track = { muted: false, enabled: true, readyState: "live" };
-    source.srcObject = { getVideoTracks: () => [track] } as unknown as MediaStream;
-    h.behavior.copy = async () => {
-      h.tick(251);
-      if (kind === "layout") h.behavior.badLayout = true;
-      if (kind === "source") source.src = "replacement";
-      if (kind === "paused") Object.assign(source, { paused: true });
-      if (kind === "ended") Object.assign(source, { ended: true });
-      if (kind === "muted") track.muted = true;
-    };
-    const error = await h.capture.capture(source, 1920, h.takeBuffer).catch(error => error);
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
-    expect(h.frames[0].close).toHaveBeenCalledOnce();
-    expect(h.createCanvas).not.toHaveBeenCalled();
-    h.capture.dispose();
-  });
+  it.each(["layout", "source", "paused", "ended", "muted"] as const)(
+    "does not disguise a %s failure as recoverable readback expiry",
+    async (kind) => {
+      const h = harness(),
+        source = h.video(64, 64);
+      const track = { muted: false, enabled: true, readyState: "live" };
+      source.srcObject = {
+        getVideoTracks: () => [track],
+      } as unknown as MediaStream;
+      h.behavior.copy = async () => {
+        h.tick(251);
+        if (kind === "layout") h.behavior.badLayout = true;
+        if (kind === "source") source.src = "replacement";
+        if (kind === "paused") Object.assign(source, { paused: true });
+        if (kind === "ended") Object.assign(source, { ended: true });
+        if (kind === "muted") track.muted = true;
+      };
+      const error = await h.capture
+        .capture(source, 1920, h.takeBuffer)
+        .catch((error) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(CaptureFrameExpiredError);
+      expect(h.frames[0].close).toHaveBeenCalledOnce();
+      expect(h.createCanvas).not.toHaveBeenCalled();
+      h.capture.dispose();
+    },
+  );
 
-  it("leaves Live mode fail-closed on a typed age-only acquisition failure", async () => {
+  it("discards age-only acquisition, then fails closed if no newer callback arrives", async () => {
     vi.useFakeTimers();
-    const h = harness(), source = h.video(64, 64, false);
-    const onFrame = vi.fn(async () => {}), onError = vi.fn();
-    const loop = new LiveCaptureLoop({ video: source, capture: h.capture, client: { busy: false, takeFrameBuffer: h.takeBuffer }, frameLimit: 1920, onFrame, onError, onTransport: vi.fn() });
-    loop.start(); source.present({ presentationTime: 749 });
+    const h = harness(),
+      source = h.video(64, 64, false);
+    const onFrame = vi.fn(async () => {}),
+      onError = vi.fn(),
+      onDiscard = vi.fn();
+    const loop = new LiveCaptureLoop({
+      video: source,
+      capture: h.capture,
+      client: { busy: false, takeFrameBuffer: h.takeBuffer },
+      frameLimit: 1920,
+      onFrame,
+      onError,
+      onDiscard,
+      onTransport: vi.fn(),
+    });
+    loop.start();
+    source.present({ presentationTime: 749 });
     await vi.advanceTimersByTimeAsync(2000);
     expect(onError).toHaveBeenCalledOnce();
-    expect(onError.mock.calls[0][0]).toBeInstanceOf(CaptureFrameExpiredError);
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(CaptureFreshnessError);
+    expect(onError.mock.calls[0][0].message).toMatch(
+      /stopped supplying fresh frames/,
+    );
+    expect(onDiscard).toHaveBeenCalledExactlyOnceWith("expired", 1);
     expect(onFrame).not.toHaveBeenCalled();
-    expect(source.requestVideoFrameCallback).toHaveBeenCalledOnce();
+    expect(source.requestVideoFrameCallback).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
     loop.dispose();
   });

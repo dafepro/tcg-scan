@@ -25,6 +25,26 @@ export class CaptureFreshnessError extends Error {
   }
 }
 
+/** Rejected native timing, never usable pixels. Live capture may discard this
+ * acquisition and wait for a genuinely newer callback; it must invalidate all
+ * in-flight continuity work before doing so. Raw clock evidence is retained. */
+export class CaptureFrameClockAheadError extends CaptureFreshnessError {
+  readonly timing: Readonly<{
+    checkedAt: number;
+    sourceFrame: Readonly<SourceFrame>;
+  }>;
+  constructor(source: SourceFrame, checkedAt: number) {
+    super(
+      "The camera supplied future native frame timestamps. Restart the camera.",
+    );
+    this.name = "CaptureFrameClockAheadError";
+    this.timing = Object.freeze({
+      checkedAt,
+      sourceFrame: Object.freeze({ ...source }),
+    });
+  }
+}
+
 export interface CaptureFrameExpiry {
   readonly stage: "callback" | "before-copy" | "after-copy";
   readonly checkedAt: number;
@@ -37,7 +57,11 @@ export interface CaptureFrameExpiry {
  * and retried by Pack mode. This error owns metadata, never pixels or surfaces. */
 export class CaptureFrameExpiredError extends CaptureFreshnessError {
   readonly expiry: CaptureFrameExpiry;
-  constructor(stage: CaptureFrameExpiry["stage"], source: SourceFrame, checkedAt: number) {
+  constructor(
+    stage: CaptureFrameExpiry["stage"],
+    source: SourceFrame,
+    checkedAt: number,
+  ) {
     super("The camera supplied a stale frame callback. Restart the camera.");
     this.name = "CaptureFrameExpiredError";
     this.expiry = Object.freeze({
@@ -231,36 +255,56 @@ export class FrameCapture {
       );
   }
 
-  private assertFreshSourceFrame(frame: SourceFrame, stage?: CaptureFrameExpiry["stage"]) {
+  private assertFreshSourceFrame(
+    frame: SourceFrame,
+    stage?: CaptureFrameExpiry["stage"],
+  ) {
     const now = this.dependencies.frameNow();
     if (!Number.isFinite(now) || now < 0)
-      throw new CaptureFreshnessError("The native frame clock is invalid. Restart the camera.");
+      throw new CaptureFreshnessError(
+        "The native frame clock is invalid. Restart the camera.",
+      );
     if (
       !Number.isFinite(frame.callbackAt) ||
       !Number.isFinite(frame.presentationTime) ||
       frame.callbackAt < 0 ||
       frame.presentationTime < 0
     )
-      throw new CaptureFreshnessError("The camera supplied invalid native frame timestamps. Restart the camera.");
+      throw new CaptureFreshnessError(
+        "The camera supplied invalid native frame timestamps. Restart the camera.",
+      );
     if (now < this.lastFrameCheckAt)
-      throw new CaptureFreshnessError("The native frame clock regressed. Restart the camera.");
-    if (
-      now < frame.callbackAt ||
-      frame.presentationTime - now > PRESENTATION_ARITHMETIC_UNIT_MS
-    )
-      throw new CaptureFreshnessError("The camera supplied future native frame timestamps. Restart the camera.");
+      throw new CaptureFreshnessError(
+        "The native frame clock regressed. Restart the camera.",
+      );
     if (stage === "callback") {
       const previous = this.lastObservedSourceFrame;
-      if (previous && (frame.callbackAt < previous.callbackAt || frame.presentationTime < previous.presentationTime))
-        throw new CaptureFreshnessError("The camera regressed its native frame timestamps. Restart the camera.");
+      if (
+        previous &&
+        (frame.callbackAt < previous.callbackAt ||
+          frame.presentationTime < previous.presentationTime)
+      )
+        throw new CaptureFreshnessError(
+          "The camera regressed its native frame timestamps. Restart the camera.",
+        );
       // Consume an otherwise valid identity even when its age will reject it.
       // A later callback cannot relabel these discarded pixels as a new frame.
       this.lastObservedSourceFrame = frame;
     }
     this.lastFrameCheckAt = now;
-    if (now - frame.callbackAt > SOURCE_MAX_AGE_MS || now - frame.presentationTime > SOURCE_MAX_AGE_MS) {
+    if (
+      now < frame.callbackAt ||
+      frame.presentationTime - now > PRESENTATION_ARITHMETIC_UNIT_MS
+    )
+      throw new CaptureFrameClockAheadError(frame, now);
+    if (
+      now - frame.callbackAt > SOURCE_MAX_AGE_MS ||
+      now - frame.presentationTime > SOURCE_MAX_AGE_MS
+    ) {
       if (stage) throw new CaptureFrameExpiredError(stage, frame, now);
-      throw new CaptureFreshnessError("The camera supplied a stale frame callback. Restart the camera.");
+      throw new CaptureFreshnessError(
+        "The camera supplied a stale frame callback. Restart the camera.",
+      );
     }
   }
 
@@ -369,7 +413,8 @@ export class FrameCapture {
         : await this.waitForSourceFrame(video);
       const capture = async (): Promise<CapturedPixels> => {
         this.assertSource(video);
-        if (!this.compatibility) this.assertFreshSourceFrame(sourceFrame!, "before-copy");
+        if (!this.compatibility)
+          this.assertFreshSourceFrame(sourceFrame!, "before-copy");
         const capturedAt = this.dependencies.now();
         if (this.compatibility && capturedAt - this.lastCapture < 1000)
           throw new CaptureRateLimitError();

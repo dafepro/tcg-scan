@@ -107,9 +107,9 @@ export function fastwebWindows(width: number, height: number): FastwebWindow[] {
   return windows;
 }
 /** Scheduling profile only; model preprocessing and corner validation are identical. */
-export function proposalWindows(width: number, height: number, profile: "full" | "pack" = "full"): FastwebWindow[] {
-  if (profile !== "full" && profile !== "pack") throw new Error("Invalid proposal profile.");
-  return profile === "pack" ? [[0, 0, width, height]] : fastwebWindows(width, height);
+export function proposalWindows(width: number, height: number, profile: "full" | "stream" | "pack" = "full"): FastwebWindow[] {
+  if (profile !== "full" && profile !== "stream" && profile !== "pack") throw new Error("Invalid proposal profile.");
+  return profile === "full" ? fastwebWindows(width, height) : [[0, 0, width, height]];
 }
 /** Unlike XFeat, Fastweb resizes uint8 RGB before float32 ImageNet normalization. */
 function preprocessFastwebMat(cv: Cv, image: OpenCv.Mat, window: FastwebWindow): Float32Array {

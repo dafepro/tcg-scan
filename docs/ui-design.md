@@ -64,6 +64,36 @@ Use short status words plus an icon/shape: Hold, Matching, Saving, Added, Check 
 
 A recognized name may be added while printing, finish, and condition remain unknown. Display a compact Printing unconfirmed label beside that result, with optional details. A reference quote is not a verified valuation. Keep source/date/currency with quote detail and exclude unconfirmed reference quotes from confirmed collection totals.
 
+An actionable printed-identifier request stays beside the camera while its saved
+occurrence is currently visible. Routine local-reader progress does not erase it;
+the status can say it is checking the captured view while retaining the request
+and unconfirmed label. Keep all four card edges visible so a closer view can
+still be associated with the saved identity. Hide that request for a different,
+hidden or undone occurrence, and retire it on completion or exhausted reads.
+
+Optional printing work may retain at most two eligible original captures, one per
+occurrence, each no larger than 1.4 million pixels and for at most eight seconds.
+Pause, End, New page and source/session teardown discard pending pixels. Hold test
+input discards not-yet-started printing views while allowing an active read to
+finish. Pending views are checked again before reading and retain their original
+source identifiers and capture times.
+
+Tiny samples of the fixed identifier regions can prefer a changed or more detailed
+view and delay redundant unsuccessful reads, with a six-second passive refresh.
+Samples average native pixel footprints to reduce glyph-edge aliasing. After a
+request, a changed view can accelerate a retry only after a full 600 ms window
+whose offered samples agree pairwise. The window retains at most eight tiny
+samples and breaks across gaps over 1.5 seconds; Hold also clears it. Continuously
+moving views still receive the bounded passive refresh rather than an indefinite
+wait. A retained original cannot become another settling observation when drained.
+These are uncalibrated scheduling hints, not readability, identity, physical-copy
+or printing evidence. The existing six-read limit and narrowly permitted seventh
+confirmation remain unchanged. A complete literal awaiting agreement still needs
+the independent resolver's second genuine original capture. A request itself and
+multiple crops of one capture never supply evidence votes. Captures retained
+before a new request are discarded for that occurrence; they are not described as
+the user's response.
+
 ## Themes and live appearance choices
 
 Use semantic variables: background, surface, raised, text, muted, border, accent, accent-ink, focus, success, warning, danger. Do not retain a `lime` variable whose meaning changes by theme. Accent marks the next action and active navigation; semantic warnings/success remain independent of branding.
@@ -123,7 +153,6 @@ replacement/rejection/cancellation, queue omissions/capacity losses, processed v
 and saved events. Measured dimensions/timings appear only after an
 actual analysis and reset when preparing another source. Counts kept from a previous
 ended session remain visible until a new session is successfully committed.
-
 
 ## Saved catalog review
 

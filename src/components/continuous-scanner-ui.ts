@@ -1,5 +1,33 @@
 import type { ScanTrack } from "../lib/scan-session";
 
+export interface LivePrintingPrompt {
+  eventId: string;
+  name: string;
+  message: string;
+}
+
+/** Keep the actual request beside the camera through routine reader progress.
+ * A hidden/undone/other occurrence never borrows this prompt or asserted name. */
+export function printingPromptStatus(
+  prompt: LivePrintingPrompt | undefined,
+  tracks: readonly Pick<ScanTrack, "eventId" | "visible" | "status">[],
+  live: boolean,
+  reading: boolean,
+): string | undefined {
+  if (
+    !live ||
+    !prompt ||
+    !tracks.some(
+      (track) =>
+        track.eventId === prompt.eventId &&
+        track.visible &&
+        track.status === "added",
+    )
+  )
+    return;
+  return `${prompt.name}: ${reading ? "Checking this view; printing unconfirmed." : "Printing unconfirmed."} ${prompt.message} Keep all four card edges visible.`;
+}
+
 const STATUS_LABELS: Record<ScanTrack["status"], string> = {
   stabilizing: "Hold",
   matching: "Matching",

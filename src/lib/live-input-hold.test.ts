@@ -64,6 +64,10 @@ function harness() {
   const onFrame = vi.fn(async (context: LiveCaptureContext) => {
     const frameEpoch = epoch;
     if (held) return;
+    const printingPixels = new Uint8ClampedArray(600 * 840 * 4).fill(
+      context.frameId * 30,
+    );
+    for (let i = 3; i < printingPixels.length; i += 4) printingPixels[i] = 255;
     void printing.offer({
       reference,
       sessionId: "session",
@@ -71,7 +75,11 @@ function harness() {
       frameId: `native-${context.frameId}`,
       capturedAt: context.capture.capturedAt,
       sourceMinEdge: 600,
-      image: { width: 600, height: 840 } as ImageData,
+      image: {
+        width: 600,
+        height: 840,
+        data: printingPixels,
+      } as ImageData,
     });
     await matcher.promise;
     if (context.isCurrent() && frameEpoch === epoch && !held) commits();
@@ -174,12 +182,17 @@ describe("diagnostic input hold with the real Live loop and PrintingSession", ()
     h.resume();
     await vi.advanceTimersByTimeAsync(0);
     expect(h.capture).toHaveBeenCalledTimes(captures + 1);
+    // Resume supplies new views, but a single changed capture is not yet a
+    // settled response. This deliberately sparse fixture reaches the bounded
+    // passive refresh instead; the intervening views never become OCR votes.
+    expect(h.read).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(240);
     expect(h.read).toHaveBeenCalledTimes(2);
     expect(
       h.diagnostics.mock.calls[1][1].evidence.map(
         (item: { frameId: string }) => item.frameId,
       ),
-    ).toEqual(["native-1", "native-2"]);
+    ).toEqual(["native-1", "native-4"]);
     expect(h.guidance).toHaveBeenCalledOnce();
     h.end();
   });

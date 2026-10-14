@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { grayscaleSample, LiveCaptureLoop } from "./live-capture";
 import type { LiveCaptureContext } from "./live-capture";
 import type { CapturedPixels } from "./frame-capture";
+import {
+  CaptureFrameClockAheadError,
+  CaptureFrameExpiredError,
+  CaptureFreshnessError,
+} from "./frame-capture";
 
 function pending() {
   let resolve!: () => void;
@@ -38,14 +43,17 @@ function harness(onFrame: (context: LiveCaptureContext) => Promise<void>) {
   );
   const dispose = vi.fn(),
     onError = vi.fn(),
-    onTransport = vi.fn();
+    onTransport = vi.fn(),
+    onDiscard = vi.fn();
+  const video = { ended: false } as HTMLVideoElement;
   const loop = new LiveCaptureLoop({
-    video: {} as HTMLVideoElement,
+    video,
     client: { busy: false, takeFrameBuffer: allocate },
     frameLimit: 1920,
     onFrame,
     onError,
     onTransport,
+    onDiscard,
     capture: {
       capture,
       dispose,
@@ -60,6 +68,8 @@ function harness(onFrame: (context: LiveCaptureContext) => Promise<void>) {
     dispose,
     onError,
     onTransport,
+    onDiscard,
+    video,
     source,
     recycle: (buffer: ArrayBuffer) => {
       recycled = buffer;
@@ -67,6 +77,122 @@ function harness(onFrame: (context: LiveCaptureContext) => Promise<void>) {
   };
 }
 afterEach(() => vi.useRealTimers());
+
+const rejectedSource = {
+  presentedFrames: 4,
+  mediaTime: 0.4,
+  presentationTime: 1001,
+  callbackAt: 1000,
+};
+
+describe("bounded rejected-frame recovery", () => {
+  it("invalidates old continuity before retrying a rejected native capture", async () => {
+    vi.useFakeTimers();
+    const work = pending();
+    let old!: LiveCaptureContext;
+    let saves = 0;
+    const handler = vi.fn(async (context: LiveCaptureContext) => {
+      if (!old) {
+        old = context;
+        await work.promise;
+      }
+      if (context.isCurrent()) saves++;
+    });
+    const h = harness(handler);
+    const original = h.capture.getMockImplementation()!;
+    let n = 0;
+    h.capture.mockImplementation(async (...args) => {
+      if (++n === 2)
+        throw new CaptureFrameClockAheadError(rejectedSource, 1000);
+      return original(...args);
+    });
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(125);
+    expect(old.isCurrent()).toBe(false);
+    expect(old.latest()).toBeUndefined();
+    expect(old.history.status.open).toBe(false);
+    expect(h.onDiscard).toHaveBeenCalledWith("clock-ahead", 1);
+    expect(h.onError).not.toHaveBeenCalled();
+    work.resolve();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(saves).toBeGreaterThan(0);
+    expect(handler).toHaveBeenCalledTimes(3);
+    h.loop.dispose();
+  });
+
+  it.each(["expired", "clock-ahead"] as const)(
+    "stops after three consecutive %s rejections with no admitted evidence",
+    async (reason) => {
+      vi.useFakeTimers();
+      const handler = vi.fn(async () => {}),
+        h = harness(handler);
+      const error =
+        reason === "expired"
+          ? new CaptureFrameExpiredError("callback", rejectedSource, 1500)
+          : new CaptureFrameClockAheadError(rejectedSource, 1000);
+      h.capture.mockRejectedValue(error);
+      h.loop.start();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(h.capture).toHaveBeenCalledTimes(3);
+      expect(h.onDiscard.mock.calls).toEqual([
+        [reason, 1],
+        [reason, 2],
+        [reason, 3],
+      ]);
+      expect(handler).not.toHaveBeenCalled();
+      expect(h.onError).toHaveBeenCalledExactlyOnceWith(error);
+      h.loop.dispose();
+    },
+  );
+
+  it("resets consecutive failures only after a genuinely successful acquisition", async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn(async () => {}),
+      h = harness(handler);
+    const original = h.capture.getMockImplementation()!;
+    let n = 0;
+    h.capture.mockImplementation(async (...args) => {
+      if ([1, 2, 4, 5].includes(++n))
+        throw new CaptureFrameClockAheadError(rejectedSource, 1000);
+      return original(...args);
+    });
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(750);
+    expect(h.onDiscard).toHaveBeenCalledTimes(4);
+    expect(handler).toHaveBeenCalledTimes(3);
+    expect(h.onError).not.toHaveBeenCalled();
+    h.loop.dispose();
+  });
+
+  it("keeps source replacement and malformed provenance immediately fatal", async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn(async () => {}),
+      h = harness(handler);
+    const error = new CaptureFreshnessError("The camera source changed.");
+    h.capture.mockRejectedValue(error);
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.capture).toHaveBeenCalledOnce();
+    expect(h.onError).toHaveBeenCalledExactlyOnceWith(error);
+    expect(h.onDiscard).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+    h.loop.dispose();
+  });
+
+  it("lets natural EOF retire capture without a false camera-fault message", async () => {
+    vi.useFakeTimers();
+    const h = harness(vi.fn(async () => {}));
+    h.capture.mockImplementation(async () => {
+      Object.defineProperty(h.video, "ended", { value: true });
+      throw new CaptureFreshnessError("The camera is paused or has ended.");
+    });
+    h.loop.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.capture).toHaveBeenCalledOnce();
+    expect(h.onError).not.toHaveBeenCalled();
+    h.loop.dispose();
+  });
+});
 
 describe("continuous sampling with worker backpressure", () => {
   it("keeps capturing only bounded grayscale history while exactly one operation runs", async () => {

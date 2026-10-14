@@ -30,6 +30,12 @@ const ref: PrintingCandidate = {
   number: "25",
   printedTotal: 198,
 };
+// Real bounded RGBA fixtures: scheduler sampling must never accept missing pixels.
+const images = Array.from({ length: 8 }, (_, index) => {
+  const data = new Uint8ClampedArray(600 * 840 * 4).fill(index * 30);
+  for (let offset = 3; offset < data.length; offset += 4) data[offset] = 255;
+  return { width: 600, height: 840, data } as ImageData;
+});
 function frame(
   index = 1,
   overrides: Partial<PrintingFrame> = {},
@@ -38,9 +44,9 @@ function frame(
     sessionId: "session",
     eventId: "event",
     frameId: `frame-${index}`,
-    capturedAt: index * 2000,
+    capturedAt: index * 6000,
     reference: ref,
-    image: { width: 600, height: 840 } as ImageData,
+    image: images[index % images.length],
     sourceMinEdge: 600,
     ...overrides,
   };
@@ -75,9 +81,10 @@ function harness(now?: () => number) {
     catalogCompleteForIdentity: true,
     scope: "TCGdex English identity results",
   }));
-  const isCurrent = vi.fn(() => true);
+  const isCurrent = vi.fn<(frame: PrintingFrame) => boolean>(() => true);
   const onStatus = vi.fn<(eventId: string, status: string) => void>();
   const onGuidance = vi.fn<(eventId: string, message: string) => void>();
+  const onGuidanceComplete = vi.fn<(eventId: string) => void>();
   const onDiagnostics =
     vi.fn<(eventId: string, result: PrintingResolution) => void>();
   const onResolution = vi.fn<
@@ -90,6 +97,7 @@ function harness(now?: () => number) {
     isCurrent,
     onStatus,
     onGuidance,
+    onGuidanceComplete,
     onDiagnostics,
     onResolution,
   });
@@ -102,6 +110,7 @@ function harness(now?: () => number) {
     isCurrent,
     onStatus,
     onGuidance,
+    onGuidanceComplete,
     onDiagnostics,
     onResolution,
   };
@@ -110,6 +119,9 @@ const success = (calls: ReturnType<typeof harness>["onStatus"]) =>
   calls.mock.calls.filter(([, status]) =>
     status.startsWith("Printed catalog identifiers read."),
   );
+function unread(input: PrintingReadInput): PrintingObservation {
+  return { ...observed(input), rawText: "", fields: {} };
+}
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -380,7 +392,7 @@ describe("printing session coordination", () => {
     expect(success(h.onStatus)).toHaveLength(0);
     h.session.dispose();
   });
-  it("drops incoming frames while one offer is running instead of enqueueing them", async () => {
+  it("retains only the latest eligible original for one busy occurrence without spending reads", async () => {
     const h = harness();
     const pending = deferred<PrintingObservation>();
     h.read.mockImplementationOnce(() => pending.promise);
@@ -392,10 +404,17 @@ describe("printing session coordination", () => {
     expect(skipped.every((value) => value === false)).toBe(true);
     expect(h.read).toHaveBeenCalledOnce();
     expect(h.catalog).toHaveBeenCalledOnce();
+    expect(h.session.retainedCaptures).toBe(1);
     pending.resolve(observed(h.read.mock.calls[0][0]));
     await first;
-    expect(h.session.busy).toBe(false);
-    expect(h.read).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(h.session.busy).toBe(false));
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.read.mock.calls[1][0]).toMatchObject({
+      frameId: "frame-101",
+      capturedAt: 606_000,
+    });
+    expect(h.read.mock.calls[1][0].image).toBe(images[5]);
+    expect(h.session.retainedCaptures).toBe(0);
     h.session.dispose();
   });
   it("keeps incomplete catalog lookups unresolved despite two clear observations", async () => {
@@ -443,7 +462,7 @@ describe("printing session coordination", () => {
     ).toBe(false);
     expect(h.read).not.toHaveBeenCalled();
     await h.session.offer(frame());
-    expect(await h.session.offer(frame(2, { capturedAt: 2100 }))).toBe(false);
+    expect(await h.session.offer(frame(2, { capturedAt: 6100 }))).toBe(false);
     for (let index = 2; index <= 6; index++)
       await h.session.offer(frame(index));
     expect(h.read).toHaveBeenCalledTimes(6);
@@ -463,12 +482,12 @@ describe("printing session coordination", () => {
     });
     for (let index = 1; index <= 6; index++)
       await h.session.offer(frame(index, { eventId: "first" }));
-    expect(h.session.ready("first", 14_000)).toBe(false);
-    expect(h.session.ready("second", 14_000)).toBe(true);
+    expect(h.session.ready("first", 42_000)).toBe(false);
+    expect(h.session.ready("second", 42_000)).toBe(true);
     await h.session.offer(frame(7, { eventId: "second" }));
-    expect(h.session.ready("second", 14_100)).toBe(false);
-    expect(h.session.ready("third", 14_100)).toBe(true);
-    await h.session.offer(frame(8, { eventId: "third", capturedAt: 14_100 }));
+    expect(h.session.ready("second", 42_100)).toBe(false);
+    expect(h.session.ready("third", 42_100)).toBe(true);
+    await h.session.offer(frame(8, { eventId: "third", capturedAt: 42_100 }));
     expect(h.read.mock.calls.map(([input]) => input.eventId)).toEqual([
       ...Array<string>(6).fill("first"),
       "second",
@@ -718,7 +737,368 @@ async function offerNormalBudget(h: ReturnType<typeof harness>) {
   for (let index = 1; index <= 6; index++) await h.session.offer(frame(index));
 }
 
+describe("bounded prompt-responsive capture scheduling", () => {
+  it("bounds retries for a continuously moving requested view instead of waiting forever or spending them every 1.5 seconds", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    h.read.mockImplementation(async (input) => unread(input));
+    await h.session.offer(frame(1, { capturedAt: 2000 }));
+    for (let i = 0; i <= 63; i++)
+      await h.session.offer(
+        frame(i + 2, {
+          capturedAt: 3500 + i * 500,
+          image: images[2 + (i % 2)],
+        }),
+      );
+    expect(h.read.mock.calls.map(([input]) => input.capturedAt)).toEqual([
+      2000, 8000, 14000, 20000, 26000, 32000,
+    ]);
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onGuidanceComplete).toHaveBeenCalledWith("event");
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it("Hold clears partial settling history and a fresh full window can accelerate the response", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    h.read.mockImplementationOnce(async (input) => unread(input));
+    await h.session.offer(frame(1, { capturedAt: 2000 }));
+    for (let i = 0; i < 3; i++)
+      await h.session.offer(
+        frame(i + 2, { capturedAt: 4000 + i * 200, image: images[2] }),
+      );
+    expect(h.read).toHaveBeenCalledOnce();
+    h.session.discardPending();
+    await h.session.offer(frame(5, { capturedAt: 4600, image: images[2] }));
+    expect(h.read).toHaveBeenCalledOnce();
+    for (let i = 0; i < 3; i++)
+      await h.session.offer(
+        frame(i + 6, { capturedAt: 4800 + i * 200, image: images[2] }),
+      );
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.read.mock.calls[1][0].capturedAt).toBe(5200);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    await h.session.offer(frame(9, { capturedAt: 6700, image: images[3] }));
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    h.session.dispose();
+  });
+  it("starts another retained occurrence after Undo and ignores the retired reader's late completion", async () => {
+    const h = harness();
+    const retired = deferred<PrintingObservation>();
+    const retained = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => retired.promise);
+    h.read.mockImplementationOnce(() => retained.promise);
+    const first = h.session.offer(frame(1, { eventId: "undone" }));
+    const queued = frame(2, { eventId: "retained" });
+    await h.session.offer(queued);
+    expect(h.session.retainedCaptures).toBe(1);
+    h.session.forget("undone");
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.read.mock.calls[1][0].eventId).toBe("retained");
+    expect(h.read.mock.calls[1][0].image).toBe(queued.image);
+    expect(h.session.retainedCaptures).toBe(0);
+    expect(h.session.busy).toBe(true);
+    retired.resolve(observed(h.read.mock.calls[0][0]));
+    expect(await first).toBe(false);
+    expect(h.session.busy).toBe(true);
+    expect(h.onDiagnostics).not.toHaveBeenCalled();
+    retained.resolve(observed(h.read.mock.calls[1][0]));
+    await vi.waitFor(() => expect(h.session.busy).toBe(false));
+    expect(h.onDiagnostics).toHaveBeenCalledOnce();
+    expect(h.onDiagnostics.mock.calls[0][0]).toBe("retained");
+    expect(h.read).toHaveBeenCalledTimes(2);
+    h.session.dispose();
+  });
+  it("does not let a later unchanged view replace a queued response to the live request", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    h.read.mockImplementation(async (input) => unread(input));
+    await h.session.offer(frame(1, { capturedAt: 2000 }));
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const second = h.session.offer(
+      frame(2, { capturedAt: 8000, image: images[1] }),
+    );
+    for (let i = 0; i < 3; i++)
+      await h.session.offer(
+        frame(3 + i, { capturedAt: 10000 + i * 200, image: images[2] }),
+      );
+    const response = frame(6, { capturedAt: 10600, image: images[2] });
+    await h.session.offer(response);
+    await h.session.offer(frame(7, { capturedAt: 12000, image: images[1] }));
+    pending.resolve(unread(h.read.mock.calls[1][0]));
+    await second;
+    await vi.waitFor(() => expect(h.session.busy).toBe(false));
+    expect(h.read).toHaveBeenCalledTimes(3);
+    expect(h.read.mock.calls[2][0].frameId).toBe(response.frameId);
+    expect(h.read.mock.calls[2][0].image).toBe(response.image);
+    h.session.dispose();
+  });
+  it("never spends an agreement read on known identical pixels even after the refresh interval", async () => {
+    const h = harness();
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      imageFingerprint: "identical-source-bytes",
+    }));
+    await h.session.offer(frame());
+    for (let index = 2; index < 12; index++)
+      expect(await h.session.offer(frame(index, { image: images[1] }))).toBe(
+        false,
+      );
+    expect(h.read).toHaveBeenCalledOnce();
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(h.session.needs("event")).toBe(true);
+    h.session.dispose();
+  });
+  it("caps retained occurrences at two and does not spend attempts on replacement", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame(1, { eventId: "active" }));
+    for (let i = 2; i < 30; i++) {
+      await h.session.offer(frame(i, { eventId: `pending-${i}` }));
+      expect(h.session.retainedCaptures).toBeLessThanOrEqual(2);
+    }
+    expect(h.read).toHaveBeenCalledOnce();
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    await first;
+    await vi.waitFor(() => expect(h.session.busy).toBe(false));
+    expect(h.read.mock.calls.map(([input]) => input.eventId)).toEqual([
+      "active",
+      "pending-28",
+      "pending-29",
+    ]);
+    expect(h.session.retainedCaptures).toBe(0);
+    h.session.dispose();
+  });
+  it("keeps a higher-native-detail pending original over a later weaker view", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame());
+    const sharper = frame(2, { sourceMinEdge: 800 });
+    await h.session.offer(sharper);
+    await h.session.offer(frame(3, { sourceMinEdge: 600 }));
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    await first;
+    await vi.waitFor(() => expect(h.session.busy).toBe(false));
+    expect(h.read.mock.calls[1][0].image).toBe(sharper.image);
+    expect(h.read.mock.calls[1][0]).toMatchObject({
+      frameId: sharper.frameId,
+      capturedAt: sharper.capturedAt,
+      eventId: sharper.eventId,
+      sourceMinEdge: 800,
+    });
+    h.session.dispose();
+  });
+  it("does not spend blank-read attempts on redundant views but permits a bounded refresh", async () => {
+    const h = harness();
+    h.read.mockImplementation(async (input) => unread(input));
+    await h.session.offer(frame(1, { capturedAt: 2000 }));
+    for (const capturedAt of [3500, 4000, 5500, 7999])
+      expect(
+        await h.session.offer(frame(2, { capturedAt, image: images[1] })),
+      ).toBe(false);
+    expect(h.read).toHaveBeenCalledOnce();
+    expect(
+      await h.session.offer(frame(3, { capturedAt: 8000, image: images[1] })),
+    ).toBe(true);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.session.needs("event")).toBe(true);
+    h.session.dispose();
+  });
+  it("drops pre-prompt captures, then promptly reads the changed response and a genuine agreement capture", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame());
+    await h.session.offer(frame(2));
+    pending.resolve(unread(h.read.mock.calls[0][0]));
+    await first;
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(h.session.retainedCaptures).toBe(0);
+    expect(h.read).toHaveBeenCalledOnce();
+    await h.session.offer(frame(2, { capturedAt: 8000, image: images[1] }));
+    expect(h.read).toHaveBeenCalledOnce();
+    await h.session.offer(frame(3));
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    // Similarity does not block the independent resolver's second original vote.
+    const secondOriginal = {
+      ...images[3],
+      data: images[3].data.slice(),
+    } as ImageData;
+    secondOriginal.data[0]++;
+    await h.session.offer(frame(4, { image: secondOriginal }));
+    expect(h.read).toHaveBeenCalledTimes(3);
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    expect(h.onResolution.mock.calls[0][1]).toMatchObject({
+      finish: "unknown",
+      condition: "unknown",
+      priceEligible: false,
+    });
+    expect(h.onGuidanceComplete).toHaveBeenCalledWith("event");
+    h.session.dispose();
+  });
+  it.each(["cancel", "forget", "dispose"] as const)(
+    "releases pending originals on %s without reviving late work",
+    async (method) => {
+      const h = harness();
+      const pending = deferred<PrintingObservation>();
+      h.read.mockImplementationOnce(() => pending.promise);
+      const first = h.session.offer(frame());
+      await h.session.offer(frame(2));
+      expect(h.session.retainedCaptures).toBe(1);
+      if (method === "forget") h.session.forget("event");
+      else h.session[method]();
+      pending.resolve(observed(h.read.mock.calls[0][0]));
+      await first;
+      expect(h.session.retainedCaptures).toBe(0);
+      expect(h.read).toHaveBeenCalledOnce();
+      expect(h.onResolution).not.toHaveBeenCalled();
+      h.session.dispose();
+    },
+  );
+  it("Hold input discards queued views while allowing the already-started read to finish", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame());
+    await h.session.offer(frame(2));
+    h.session.discardPending();
+    expect(h.session.busy).toBe(true);
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    expect(await first).toBe(true);
+    expect(h.read).toHaveBeenCalledOnce();
+    expect(h.session.retainedCaptures).toBe(0);
+    h.session.dispose();
+  });
+  it("expires retained pixels on monotonic time even while the first read is still pending", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const h = harness(() => now);
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame());
+    await h.session.offer(frame(2));
+    now = 8000;
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(h.session.busy).toBe(true);
+    expect(h.session.retainedCaptures).toBe(0);
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    await first;
+    expect(h.read).toHaveBeenCalledOnce();
+    h.session.dispose();
+  });
+  it("rechecks queued occurrence ownership before dispatch", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame(1, { eventId: "active" }));
+    await h.session.offer(frame(2, { eventId: "retired" }));
+    h.isCurrent.mockImplementation((input) => input.eventId !== "retired");
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    await first;
+    expect(h.read).toHaveBeenCalledOnce();
+    expect(h.session.retainedCaptures).toBe(0);
+    h.session.dispose();
+  });
+  it("rejects missing/detached and undersized pixels before retention or OCR", async () => {
+    const h = harness();
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const first = h.session.offer(frame());
+    for (const image of [
+      { width: 600, height: 840 },
+      { width: 600, height: 840, data: new Uint8ClampedArray(0) },
+    ] as ImageData[])
+      expect(await h.session.offer(frame(2, { image }))).toBe(false);
+    await h.session.offer(frame(2, { sourceMinEdge: 240 }));
+    expect(h.session.retainedCaptures).toBe(0);
+    pending.resolve(observed(h.read.mock.calls[0][0]));
+    await first;
+    expect(h.read).toHaveBeenCalledOnce();
+    h.session.dispose();
+  });
+});
+
 describe("one bounded late-literal confirmation", () => {
+  it("keeps another occurrence's expiry live after Undo cancels the active reader", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const h = lateLiteralHarness(() => now);
+    await offerNormalBudget(h);
+    const pending = deferred<PrintingObservation>();
+    h.read.mockImplementationOnce(() => pending.promise);
+    const active = h.session.offer(frame(7, { eventId: "another-event" }));
+    h.session.forget("another-event");
+    now = 20_000;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onGuidanceComplete).toHaveBeenCalledWith("event");
+    expect(h.onStatus.mock.calls.at(-1)?.[0]).toBe("event");
+    pending.resolve(observed(h.read.mock.calls[6][0]));
+    await active;
+    h.session.dispose();
+  });
+  it("clears the request when an unused seventh opportunity expires without a new capture", async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const h = lateLiteralHarness(() => now);
+    await offerNormalBudget(h);
+    expect(h.session.needs("event")).toBe(true);
+    expect(h.onGuidanceComplete).not.toHaveBeenCalled();
+    now = 20_000;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onGuidanceComplete).toHaveBeenCalledWith("event");
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
+      "No more automatic reads",
+    );
+    expect(h.read).toHaveBeenCalledTimes(6);
+    h.session.dispose();
+  });
+  it("does not consume the narrow seventh opportunity with a duplicate of the sixth capture", async () => {
+    const h = lateLiteralHarness();
+    await offerNormalBudget(h);
+    expect(await h.session.offer(frame(7, { image: images[6] }))).toBe(false);
+    expect(h.read).toHaveBeenCalledTimes(6);
+    expect(h.session.needs("event")).toBe(true);
+    expect(await h.session.offer(frame(8))).toBe(true);
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    expect(h.read).toHaveBeenCalledTimes(7);
+    h.session.dispose();
+  });
+  it("retires an impossible camera request after a final-attempt storage failure", async () => {
+    const h = lateLiteralHarness();
+    await offerNormalBudget(h);
+    h.onResolution.mockReturnValue("Collection storage is unavailable.");
+    await h.session.offer(frame(7));
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
+      "storage is unavailable",
+    );
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onGuidanceComplete).toHaveBeenCalledWith("event");
+    h.session.dispose();
+  });
   it("allows exactly one fresh seventh capture after the sixth read first separates the catalog", async () => {
     const h = lateLiteralHarness();
     await offerNormalBudget(h);
@@ -728,7 +1108,7 @@ describe("one bounded late-literal confirmation", () => {
     expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
       "another original capture",
     );
-    expect(await h.session.offer(frame(7, { capturedAt: 12_100 }))).toBe(false);
+    expect(await h.session.offer(frame(7, { capturedAt: 36_100 }))).toBe(false);
     expect(await h.session.offer(frame(7))).toBe(true);
     expect(h.onResolution).toHaveBeenCalledOnce();
     const result = h.onResolution.mock.calls[0][1];

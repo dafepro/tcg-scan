@@ -1,5 +1,10 @@
 import { CaptureHistory } from "./capture-history";
-import { CaptureRateLimitError, FrameCapture } from "./frame-capture";
+import {
+  CaptureFrameClockAheadError,
+  CaptureFrameExpiredError,
+  CaptureRateLimitError,
+  FrameCapture,
+} from "./frame-capture";
 import type { CapturedPixels } from "./frame-capture";
 import type { VisionClient } from "./vision";
 import type { RoiContinuityFrame } from "./vision/roi-continuity";
@@ -101,6 +106,8 @@ interface Dependencies {
   onFrame(context: LiveCaptureContext): Promise<void>;
   onError(error: unknown): void;
   onTransport(transport: CapturedPixels["transport"]): void;
+  /** A rejected acquisition was discarded, not admitted to matching/history. */
+  onDiscard?(reason: "expired" | "clock-ahead", total: number): void;
   capture?: CaptureSource;
 }
 
@@ -121,6 +128,8 @@ export class LiveCaptureLoop {
   private history?: CaptureHistory;
   private token?: number;
   private latestCapture?: { frameId: number; timestampMs: number };
+  private consecutiveDiscards = 0;
+  private discardedCaptures = 0;
 
   constructor(private readonly dependencies: Dependencies) {
     this.capture =
@@ -190,6 +199,7 @@ export class LiveCaptureLoop {
       );
       if (this.disposed || this.paused || generation !== this.generation)
         return;
+      this.consecutiveDiscards = 0;
       const frameId = ++this.sequence;
       this.latestCapture = { frameId, timestampMs: captured.capturedAt };
       this.dependencies.onTransport(captured.transport);
@@ -248,6 +258,41 @@ export class LiveCaptureLoop {
           });
       }
     } catch (error) {
+      if (generation !== this.generation || this.disposed || this.paused)
+        return;
+      // Natural file EOF can reject an outstanding native callback before its
+      // ended listener tears down the session. It is not a camera fault.
+      if (this.dependencies.video.ended) {
+        this.pause();
+        return;
+      }
+      if (
+        error instanceof CaptureFrameExpiredError ||
+        error instanceof CaptureFrameClockAheadError
+      ) {
+        // Never bridge the invalid acquisition with older history or let its
+        // asynchronous identity result commit. A later source callback must
+        // independently pass the unchanged timestamp/identity/age checks.
+        this.generation++;
+        this.history?.cancel();
+        this.latestCapture = undefined;
+        this.consecutiveDiscards++;
+        this.discardedCaptures++;
+        try {
+          this.dependencies.onDiscard?.(
+            error instanceof CaptureFrameExpiredError
+              ? "expired"
+              : "clock-ahead",
+            this.discardedCaptures,
+          );
+        } catch {
+          /* Diagnostic reporting cannot grant evidence or halt cleanup. */
+        }
+        if (this.consecutiveDiscards < 3) return;
+        this.pause();
+        this.dependencies.onError(error);
+        return;
+      }
       if (
         generation === this.generation &&
         !this.disposed &&

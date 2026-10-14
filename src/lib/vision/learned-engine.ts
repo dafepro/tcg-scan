@@ -102,9 +102,9 @@ export function decideLearnedGroup(hypotheses: CardDetection[], diagnostics = fa
 
 /** A geometry-only preview heuristic; never stores identities or crop descriptors.
  * Any antialiased RGB change >12/255 invalidates immediately. Expiry also invalidates.
- * Full frozen10-window passes are throttled to >=1500ms from completion, including
- * while moving. Until a new pass may run, all contours remain deferred. Photo
- * ignores this cache and always executes every frozen window.
+ * Preview proposal passes are throttled to >=1500ms from completion, including
+ * while moving. Until a new pass may run, all contours remain deferred. The
+ * engine resets this cache when the proposal profile changes. Photo ignores it.
  */
 export class LearnedGeometryCadence {
   private sample: Uint8Array | undefined;
@@ -235,7 +235,10 @@ export class LearnedVisionEngine {
     const version = this.invalidation, start = performance.now(), photo = options.mode === "photo", pack = options.mode === "pack";
     if (options.previewBurstObservations !== undefined && options.previewBurstObservations !== 1 && options.previewBurstObservations !== 3) throw new Error("Preview identity scheduling must use one or three fresh observations.");
     const burstObservations = options.previewBurstObservations ?? 3;
-    const context = `${options.mode ?? "stream"}:${options.game ?? "all"}:${image.width}x${image.height}:${burstObservations}`;
+    // Only explicit one-card modes reduce proposal coverage. Omitted mode keeps
+    // the full protocol for existing callers, and must not share stream caches.
+    const proposalProfile = pack ? "pack" : options.mode === "stream" ? "stream" : "full";
+    const context = `${options.mode ?? "full"}:${options.game ?? "all"}:${image.width}x${image.height}:${burstObservations}`;
     if (context !== this.previewContext) { this.resetPreview(); this.previewContext = context; }
     const budget = Number.isFinite(options.budgetMs) ? options.budgetMs! : photo ? 120_000 : 600;
     const deadline = start + Math.min(photo ? 120_000 : 4000, Math.max(80, budget));
@@ -245,24 +248,26 @@ export class LearnedVisionEngine {
     try {
       // maxCards never truncates automatic learned proposals. Frozen contour cap9
       // and every retained Fastweb hypothesis are grouped before any scheduling.
-      // Pack is an explicit single-card protocol: one fresh whole-frame proposal.
-      // Other modes retain every frozen contour and all ten Fastweb windows.
+      // Stream and pack explicitly show one card at a time, so their Fastweb
+      // profile uses one whole-frame inference. Stream still retains all contours
+      // and the geometry-only cadence; pack always requests fresh corners. Binder,
+      // photo and omitted-mode callers retain all ten Fastweb windows.
       const contours = pack ? [] : this.preprocessing.detect(source, 9);
       let fastweb: Quad[] | undefined;
-      if (pack) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image, "pack"); this.assertCurrent(version); }
-      else if (photo) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image); this.assertCurrent(version); }
+      if (pack) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image, proposalProfile); this.assertCurrent(version); }
+      else if (photo) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image, proposalProfile); this.assertCurrent(version); }
       else {
         const cached = this.cadence.inspect(image, performance.now());
         if (!cached.quads) { this.burstFrames = 0; this.previousGroups = undefined; }
         fastweb = cached.quads; result.scheduling!.proposalCacheReused = !!fastweb;
-        if (cached.refresh) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image); this.assertCurrent(version); this.cadence.record(image, fastweb, performance.now()); }
+        if (cached.refresh) { result.scheduling!.proposalRefresh = true; fastweb = await this.models.propose(image, proposalProfile); this.assertCurrent(version); this.cadence.record(image, fastweb, performance.now()); }
       }
       result.timings.detectionMs = performance.now() - start;
       if (!fastweb) {
         result.detectionComplete = false;
         result.detections = contours.map(q => deferred(q, "Motion invalidated corner proposals; waiting for the next complete local detector pass.")); result.scheduling!.deferredGroups = contours.length; result.budgetExhausted = true; return result;
       }
-      if (fastweb.length > (pack ? 1 : 10) || fastweb.some(q => q.length !== 4 || !isConvexQuad(q) || q.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= image.width || p.y >= image.height))) throw new Error("Invalid learned corner proposals.");
+      if (fastweb.length > (proposalProfile === "full" ? 10 : 1) || fastweb.some(q => q.length !== 4 || !isConvexQuad(q) || q.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.y < 0 || p.x >= image.width || p.y >= image.height))) throw new Error("Invalid learned corner proposals.");
       const quads = [...contours, ...fastweb], groups = groupLearnedQuads(quads, (a, b) => learnedPolygonIoU(this.cv, a, b));
       result.timings.detectionMs = performance.now() - start;
       if (!photo && !pack) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ScanTrack } from "../lib/scan-session";
 import {
   cameraFailureMessage,
+  printingPromptStatus,
   scannerTrackPresentation,
 } from "./continuous-scanner-ui";
 
@@ -19,6 +20,48 @@ const track = (
 });
 
 describe("scanner presentation", () => {
+  it("keeps the printing request visible through reading without asserting a resolved printing", () => {
+    const prompt = {
+      eventId: "saved",
+      name: "Pikachu",
+      message: "Show the bottom identifier line closer once.",
+    };
+    const tracks = [
+      { eventId: "saved", visible: true, status: "added" as const },
+    ];
+    for (const reading of [false, true]) {
+      const status = printingPromptStatus(prompt, tracks, true, reading);
+      expect(status).toContain(prompt.message);
+      expect(status).toMatch(/printing unconfirmed/i);
+      expect(status).toContain("all four card edges");
+    }
+    expect(printingPromptStatus(prompt, tracks, true, true)).toContain(
+      "Checking this view",
+    );
+  });
+  it("does not show an old printing request for paused, hidden, undone or unrelated tracks", () => {
+    const prompt = {
+      eventId: "saved",
+      name: "Pikachu",
+      message: "Show the identifier line.",
+    };
+    expect(
+      printingPromptStatus(
+        prompt,
+        [{ eventId: "saved", visible: true, status: "added" }],
+        false,
+        false,
+      ),
+    ).toBeUndefined();
+    for (const current of [
+      { eventId: "saved", visible: false, status: "added" as const },
+      { eventId: "saved", visible: true, status: "undone" as const },
+      { eventId: "another", visible: true, status: "added" as const },
+    ])
+      expect(
+        printingPromptStatus(prompt, [current], true, false),
+      ).toBeUndefined();
+  });
   it("never names a rejected still-photo candidate or leaves it Matching", () => {
     const input = track(false);
     expect(scannerTrackPresentation(input, true, true)).toEqual({

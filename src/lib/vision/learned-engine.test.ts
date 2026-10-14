@@ -144,7 +144,7 @@ describe("persistent learned engine lazy access and lifecycle", () => {
     expect(f.engine.decodedReferenceCount).toBeLessThanOrEqual(8);
     await f.engine.dispose(); expect(f.models.dispose).toHaveBeenCalledOnce();
   });
-  it("recomputes current crops, identities and all eight rivals when antialiased geometry is reused", async () => {
+  it.each(["binder", "stream"] as const)("%s recomputes current crops, identities and all eight rivals when geometry is reused", async mode => {
     const f = await fixture(), current = translate(f.image, 1, 0);
     // A one-level exposure change also distinguishes freshly rectified crops
     // whose current contour exactly compensates for the one-pixel translation.
@@ -153,12 +153,12 @@ describe("persistent learned engine lazy access and lifecycle", () => {
     f.models.extract = vi.fn(async () => queryFor(f.refs[selected]));
     const clock = vi.spyOn(performance, "now").mockReturnValue(1000);
     try {
-      const first = await f.engine.analyze(f.image, { mode: "binder", includeDiagnostics: true });
+      const first = await f.engine.analyze(f.image, { mode, includeDiagnostics: true });
       const firstExtractions = vi.mocked(f.models.extract).mock.calls.length, firstReads = f.load.mock.calls.length;
       expect(first.detections[0].autoEligible).toBe(true);
       expect(first.detections[0].candidates[0].key).toBe("ref-1");
       selected = 1;
-      const second = await f.engine.analyze(current, { mode: "binder", includeDiagnostics: true });
+      const second = await f.engine.analyze(current, { mode, includeDiagnostics: true });
       expect(second.scheduling).toMatchObject({ proposalRefresh: false, proposalCacheReused: true });
       expect(f.models.propose).toHaveBeenCalledOnce();
       expect(second.detections[0].autoEligible).toBe(true);
@@ -172,7 +172,7 @@ describe("persistent learned engine lazy access and lifecycle", () => {
       for (const result of [first, second]) for (const hypothesis of result.detections[0].hypotheses!) expect(hypothesis.candidates).toHaveLength(8);
       expect(second.detections[0].candidates[0]).not.toBe(first.detections[0].candidates[0]);
       f.load.mockImplementation(async key => { if (key === "ref-8") throw new Error("Corrupt current rival"); return f.refs.find(r => r.key === key)!; });
-      await expect(f.engine.analyze(current, { mode: "binder" })).rejects.toThrow("Corrupt current rival");
+      await expect(f.engine.analyze(current, { mode })).rejects.toThrow("Corrupt current rival");
       expect(f.models.propose).toHaveBeenCalledOnce();
       expect(f.engine.decodedReferenceCount).toBe(0);
     } finally { clock.mockRestore(); await f.engine.dispose(); }
@@ -383,6 +383,52 @@ describe("persistent learned engine lazy access and lifecycle", () => {
     } finally { clock.mockRestore(); await f.engine.dispose(); }
   });
 
+  it("stream keeps all contours and verifies each focused hypothesis and eight rivals beyond its soft budget", async () => {
+    const f = await fixture(), canonical = quad(200, 90, 239, 335), other = quad(10, 10, 100, 140);
+    const detector = vi.spyOn(VisionEngine.prototype, "detect").mockReturnValue([canonical, other]);
+    let time = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => time);
+    f.models.extract = vi.fn(async () => { time += 100; return queryFor(f.refs[0]); });
+    try {
+      const result = await f.engine.analyze(f.image, { mode: "stream", budgetMs: 80, maxCards: 1, includeDiagnostics: true });
+      expect(detector).toHaveBeenCalledWith(expect.anything(), 9);
+      expect(f.models.propose).toHaveBeenCalledWith(f.image, "stream");
+      expect(result.detectionComplete).toBe(true);
+      expect(result.scheduling).toMatchObject({ proposalRefresh: true, processedGroups: 1, deferredGroups: 1, burstFrame: 1 });
+      expect(result.scheduling!.overrunMs).toBeGreaterThan(0);
+      expect(result.detections).toHaveLength(2);
+      const verified = result.detections.find(d => d.autoEligible)!;
+      expect(verified.hypotheses).toHaveLength(2); // Contour and Fastweb both survive.
+      expect(verified.hypotheses!.every(d => d.candidates.length === 8)).toBe(true);
+      expect(result.detections.find(d => d.deferred)).toMatchObject({ quad: other, autoEligible: false });
+      expect(f.models.extract).toHaveBeenCalledTimes(2);
+      expect(f.load).toHaveBeenCalledTimes(16);
+    } finally { clock.mockRestore(); detector.mockRestore(); await f.engine.dispose(); }
+  });
+
+  it.each(["binder", "photo", undefined] as const)("%s retains full proposal coverage even with maxCards one", async mode => {
+    const f = await fixture(), detector = vi.spyOn(VisionEngine.prototype, "detect").mockReturnValue([]);
+    const proposals = Array.from({ length: 10 }, (_, i) => quad(10 + i % 5 * 100, 10 + Math.floor(i / 5) * 180, 40, 56));
+    f.models.propose = vi.fn(async () => proposals);
+    try {
+      const result = await f.engine.analyze(f.image, { mode, maxCards: 1 });
+      expect(f.models.propose).toHaveBeenCalledWith(f.image, "full");
+      expect(result.detections).toHaveLength(10);
+      expect(result.detectionComplete).toBe(true);
+    } finally { detector.mockRestore(); await f.engine.dispose(); }
+  });
+
+  it("refreshes proposals when switching between omitted mode and explicit stream, without mixing caches", async () => {
+    const f = await fixture(), clock = vi.spyOn(performance, "now").mockReturnValue(0);
+    try {
+      for (const mode of [undefined, "stream", undefined, "binder", "stream"] as const) {
+        const result = await f.engine.analyze(f.image, { mode });
+        expect(result.scheduling).toMatchObject({ proposalRefresh: true, proposalCacheReused: false, burstFrame: 1 });
+      }
+      expect(vi.mocked(f.models.propose).mock.calls.map(call => call[1])).toEqual(["full", "stream", "full", "full", "stream"]);
+    } finally { clock.mockRestore(); await f.engine.dispose(); }
+  });
+
   it("pack uses a fresh single-window proposal and all eight rivals even beyond its soft budget", async () => {
     const f = await fixture(), detector = vi.spyOn(VisionEngine.prototype, "detect"), clock = vi.spyOn(performance, "now");
     let time = 0; clock.mockImplementation(() => time += 100);
@@ -401,14 +447,14 @@ describe("persistent learned engine lazy access and lifecycle", () => {
       expect(f.load).toHaveBeenCalledTimes(16); expect(f.models.extract).toHaveBeenCalledTimes(2);
     } finally { detector.mockRestore(); clock.mockRestore(); await f.engine.dispose(); }
   });
-  it("pack rejects extra detector hypotheses and fails closed if any rival is unreadable", async () => {
+  it.each(["stream", "pack"] as const)("%s rejects extra detector hypotheses and fails closed if any rival is unreadable", async mode => {
     const f = await fixture();
     try {
       f.models.propose = vi.fn(async () => [quad(200, 90, 239, 335), quad(10, 10)]);
-      await expect(f.engine.analyze(f.image, { mode: "pack" })).rejects.toThrow("Invalid learned corner proposals");
+      await expect(f.engine.analyze(f.image, { mode })).rejects.toThrow("Invalid learned corner proposals");
       f.models.propose = vi.fn(async () => [quad(200, 90, 239, 335)]);
       f.load.mockRejectedValueOnce(new Error("Corrupt reference"));
-      await expect(f.engine.analyze(f.image, { mode: "pack" })).rejects.toThrow("Corrupt reference");
+      await expect(f.engine.analyze(f.image, { mode })).rejects.toThrow("Corrupt reference");
     } finally { await f.engine.dispose(); }
   });
 

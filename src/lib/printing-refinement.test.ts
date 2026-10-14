@@ -13,6 +13,7 @@ import type {
   ResolvePrintingInput,
 } from "./printing-refinement";
 import type { VisionGame } from "./vision/types";
+import type { PrintingRegionEvidence } from "./printing-regions";
 
 function observation(
   rawText = "025/198",
@@ -177,6 +178,136 @@ describe("literal footer observations", () => {
     expect(
       parsePrintingObservation({ ...read, rawText: "0123R\nLTR EN" }).fields,
     ).toEqual(read.fields);
+  });
+});
+
+describe("region-isolated literal observations", () => {
+  const region = (rawText: string): PrintingRegionEvidence => ({
+    regionId: "pokemon-footer",
+    registryVersion: "printing-regions-v1",
+    frameId: "frame-1",
+    imageFingerprint: "pixels-1",
+    x: 0,
+    y: 655,
+    width: 600,
+    height: 185,
+    outputWidth: 600,
+    outputHeight: 185,
+    sourceMinEdge: 600,
+    metrics: {
+      sampledPixels: 1,
+      sharpness: 0,
+      contrast: 0,
+      highlightClippedFraction: 0,
+      shadowClippedFraction: 0,
+      transparentFraction: 0,
+    },
+    qualityReasons: [],
+    rawText,
+  });
+  const read = (texts: string[], game: VisionGame = "pokemon") =>
+    parsePrintingObservation({
+      ...observation(),
+      game,
+      rawText: texts.join("\n"),
+      regions: texts.map(region),
+    });
+
+  it("never stitches partial identifiers across regions or invents a missing slash", () => {
+    for (const texts of [
+      ["4", "/102"],
+      ["4/", "102"],
+      ["581102", ""],
+    ]) {
+      const result = read(texts);
+      expect(result.fields).toEqual({});
+      expect(result.rawText).toBe(texts.join("\n"));
+      expect(resolve({ observations: [result] }).state).toBe("unresolved");
+    }
+    expect(read(["1ST", "EDITION"]).fields.edition).toBeUndefined();
+    expect(read(["LOB-", "EN001"], "yugioh").fields).toEqual({});
+    expect(read(["LTR", "EN"], "mtg").fields).toEqual({});
+  });
+
+  it("preserves single-region and legacy literal parsing, including line whitespace", () => {
+    const text = "025\n/198\nSVI EN";
+    expect(read([text]).fields).toEqual(observation(text).fields);
+    expect(read([text]).issues).toEqual(observation(text).issues);
+    expect(
+      parsePrintingObservation({ ...observation(), regions: [] }).fields,
+    ).toEqual(observation().fields);
+  });
+
+  it("merges only complete region fields and preserves every conflict", () => {
+    expect(read(["025/198", "SVI EN"]).fields).toEqual({
+      collectorNumber: "25",
+      printedTotal: "198",
+      setCode: "SVI",
+      locale: "EN",
+    });
+    const conflict = read(["025/198", "024/199"]);
+    expect(conflict.fields).toEqual({});
+    expect(conflict.issues).toEqual([
+      "conflicting-collectorNumber",
+      "conflicting-printedTotal",
+    ]);
+    expect(resolve({ observations: [conflict] }).reasons).toContain(
+      "conflicting-observations",
+    );
+    expect(read(["025/198 024/198", "025/198"]).issues).toContain(
+      "conflicting-collectorNumber",
+    );
+  });
+
+  it("keeps a wrong literal 4/1 mismatched to the actual catalog after two captures", () => {
+    const first = read(["CE Ee 4/1 1 *"]);
+    expect(first.fields).toEqual({ collectorNumber: "4", printedTotal: "1" });
+    const second = {
+      ...first,
+      frameId: "frame-2",
+      imageFingerprint: "pixels-2",
+      capturedAt: 1300,
+    };
+    const result = resolve({
+      candidates: [candidate({ number: "4", printedTotal: "102" })],
+      observations: [first, second],
+    });
+    expect(result.state).toBe("unresolved");
+    expect(result.reasons).toContain("no-catalog-printing-match");
+    expect(result.priceEligible).toBe(false);
+  });
+  it("does not count agreeing regions as separate captures", () => {
+    const result = read(["025/198", "025/198"]);
+    expect(result.fields).toEqual(observation().fields);
+    expect(result.issues).toEqual([]);
+    expect(resolve({ observations: [result] }).reasons).toContain(
+      "two-distinct-captures-required",
+    );
+  });
+
+  it("uses region literals rather than joined display text, even when regions are empty", () => {
+    const result = parsePrintingObservation({
+      ...observation("025/198"),
+      regions: [region("")],
+    });
+    expect(result.fields).toEqual({});
+    expect(result.rawText).toBe("025/198");
+  });
+
+  it("keeps region truncation blocking even if display text is shorter", () => {
+    for (const truncated of [
+      { ...region("025/198"), rawTextTruncated: true },
+      region("025/198 " + "x".repeat(PRINTING_LIMITS.rawText)),
+    ]) {
+      const result = parsePrintingObservation({
+        ...observation("025/198"),
+        regions: [truncated],
+      });
+      expect(result.issues).toEqual(["ocr-text-truncated"]);
+      expect(resolve({ observations: [result] }).reasons).toContain(
+        "no-unambiguous-footer-evidence",
+      );
+    }
   });
 });
 
@@ -542,6 +673,11 @@ describe("persistent bounded local printing reader", () => {
       "initialize",
       "setParameters",
       "recognize",
+      "setParameters",
+      "recognize",
+      "setParameters",
+      "recognize",
+      "setParameters",
       "recognize",
     ]);
     expect(messages[0].payload).toEqual({
@@ -556,6 +692,39 @@ describe("persistent bounded local printing reader", () => {
     ).toBe(true);
     reader.dispose();
     expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+  it("uses bounded single-line Pokémon input and resets the persistent worker for every region", async () => {
+    const reader = createPrintingReader();
+    const first = await reader.read(readInput());
+    expect(first.regions?.[1]).toMatchObject({
+      regionId: "pokemon-lower-right-identifier",
+      width: 85,
+      height: 26,
+      outputWidth: 170,
+      outputHeight: 52,
+      resampling: "upsampled",
+      pageSegmentationMode: 7,
+      frameId: first.frameId,
+      imageFingerprint: first.imageFingerprint,
+      sourceMinEdge: 600,
+    });
+    expect(resolve({ observations: [first] }).reasons).toContain(
+      "two-distinct-captures-required",
+    );
+    await reader.read(readInput({ game: "mtg", frameId: "next" }));
+    await reader.read(readInput({ game: "yugioh", frameId: "last" }));
+    const messages = FakeWorker.instances[0].postMessage.mock.calls.map(
+      ([message]) => message,
+    ) as unknown as {
+      action: string;
+      payload: { params?: { tessedit_pageseg_mode: string } };
+    }[];
+    expect(
+      messages
+        .filter((message) => message.action === "setParameters")
+        .map((message) => message.payload.params?.tessedit_pageseg_mode),
+    ).toEqual(["11", "7", "11", "11", "11"]);
+    reader.dispose();
   });
   it("retains native region geometry, literal OCR, config provenance and original full-card lineage", async () => {
     const reader = createPrintingReader();
@@ -1038,6 +1207,33 @@ it.runIf(process.env.PRINTING_NODE_OCR === "1")(
         }
         expect(parsed.issues).toEqual([]);
       }
+      // Synthetic reader control only: does not establish physical tiny-footer accuracy.
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="840"><rect width="600" height="840" fill="white"/><text x="510" y="818" font-family="sans-serif" font-size="12" fill="black">58/102</text></svg>';
+      const { printingRegionBounds } = await import("./printing-regions");
+      const roi = printingRegionBounds("pokemon", 600, 840)[1];
+      const png = await sharp(Buffer.from(svg))
+        .extract({
+          left: roi.x,
+          top: roi.y,
+          width: roi.width,
+          height: roi.height,
+        })
+        .resize(roi.outputWidth, roi.outputHeight)
+        .png()
+        .toBuffer();
+      await worker.setParameters({
+        tessedit_pageseg_mode: "7" as import("tesseract.js").PSM,
+      });
+      const result = await worker.recognize(png);
+      const parsed = parsePrintingObservation({
+        ...observation(),
+        rawText: result.data.text,
+      });
+      expect(
+        parsed.fields,
+        `Synthetic single-line literal OCR: ${result.data.text}`,
+      ).toEqual({ collectorNumber: "58", printedTotal: "102" });
     } finally {
       await worker.terminate();
     }

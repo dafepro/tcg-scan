@@ -1,7 +1,7 @@
 import type { VisionGame } from "./vision/types";
 
 /** Geometry/configuration version, not a claim of validated template coverage. */
-export const PRINTING_REGION_VERSION = "printing-regions-v1";
+export const PRINTING_REGION_VERSION = "printing-regions-v2";
 export const PRINTING_REGION_LIMITS = Object.freeze({
   regions: 2,
   sampledPixels: 16_384,
@@ -11,15 +11,23 @@ export const PRINTING_REGION_LIMITS = Object.freeze({
 });
 
 export type PrintingRegionId =
-  "pokemon-footer" | "mtg-footer" | "yugioh-set-code" | "yugioh-footer";
+  | "pokemon-footer"
+  | "pokemon-lower-right-identifier"
+  | "mtg-footer"
+  | "yugioh-set-code"
+  | "yugioh-footer";
 export interface PrintingRegionDefinition {
   readonly id: PrintingRegionId;
   readonly game: VisionGame;
+  readonly left?: number;
+  readonly width?: number;
+  readonly readerScale?: 2;
+  readonly pageSegmentationMode?: 7;
   readonly top: number;
   readonly height: number;
 }
-/** Preserve the existing reader's geometry; these are broad fallback zones,
- * not detected glyph bounds or proof that every card template is supported. */
+/** Broad fallback zones remain unchanged. The additional fixed Pokémon zone is
+ * a bounded reading hypothesis, not detected glyphs or validated template coverage. */
 export const PRINTING_REGION_REGISTRY: Readonly<
   Record<VisionGame, readonly PrintingRegionDefinition[]>
 > = Object.freeze({
@@ -29,6 +37,16 @@ export const PRINTING_REGION_REGISTRY: Readonly<
       game: "pokemon",
       top: 0.78,
       height: 0.22,
+    } as const),
+    Object.freeze({
+      id: "pokemon-lower-right-identifier",
+      game: "pokemon",
+      left: 0.84,
+      width: 0.14,
+      top: 0.95,
+      height: 0.03,
+      readerScale: 2,
+      pageSegmentationMode: 7,
     } as const),
   ]),
   mtg: Object.freeze([
@@ -81,7 +99,7 @@ export interface PrintingRegionEvidence {
   /** ORIGINAL full-card capture lineage. Multiple regions never add votes. */
   frameId: string;
   imageFingerprint: string;
-  /** Actual ROI pixels in the rectified capture, before reader downscaling.
+  /** Actual ROI pixels in the rectified capture, before any reader resampling.
    * Rectification may already have downscaled; these are not character sizes. */
   x: number;
   y: number;
@@ -89,6 +107,9 @@ export interface PrintingRegionEvidence {
   height: number;
   outputWidth: number;
   outputHeight: number;
+  /** Optional only for historical records. Upsampling adds no native detail. */
+  resampling?: "native" | "downsampled" | "upsampled";
+  pageSegmentationMode?: 7 | 11;
   /** Native source-quad shorter edge, before rectification/resizing. */
   sourceMinEdge: number;
   metrics: PrintingRegionMetrics;
@@ -124,7 +145,15 @@ export function printingRegionBounds(
   height: number,
 ): Pick<
   PrintingRegionEvidence,
-  "regionId" | "x" | "y" | "width" | "height" | "outputWidth" | "outputHeight"
+  | "regionId"
+  | "x"
+  | "y"
+  | "width"
+  | "height"
+  | "outputWidth"
+  | "outputHeight"
+  | "resampling"
+  | "pageSegmentationMode"
 >[] {
   if (
     !Number.isSafeInteger(width) ||
@@ -135,17 +164,28 @@ export function printingRegionBounds(
   )
     throw new Error("Invalid printing region dimensions");
   return PRINTING_REGION_REGISTRY[game].map((region) => {
+    const x = Math.floor((region.left ?? 0) * width);
+    const cropWidth = Math.min(
+      width - x,
+      Math.ceil(((region.width ?? 1) * 100 * width) / 100),
+    );
     const y = Math.floor(region.top * height);
     const cropHeight = Math.min(height - y, Math.ceil(region.height * height));
-    const scale = Math.min(1, PRINTING_REGION_LIMITS.outputWidth / width);
+    const scale = Math.min(
+      region.readerScale ?? 1,
+      PRINTING_REGION_LIMITS.outputWidth / cropWidth,
+    );
     return {
       regionId: region.id,
-      x: 0,
+      x,
       y,
-      width,
+      width: cropWidth,
       height: cropHeight,
-      outputWidth: Math.max(1, Math.round(width * scale)),
+      outputWidth: Math.max(1, Math.round(cropWidth * scale)),
       outputHeight: Math.max(1, Math.round(cropHeight * scale)),
+      resampling:
+        scale > 1 ? "upsampled" : scale < 1 ? "downsampled" : "native",
+      pageSegmentationMode: region.pageSegmentationMode ?? 11,
     };
   });
 }

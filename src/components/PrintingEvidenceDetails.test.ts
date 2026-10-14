@@ -98,6 +98,35 @@ describe("printing evidence progressive disclosure", () => {
     expect(html).toContain("do not establish blur, glare, readability");
     expect(html).toContain("Camera requests are not evidence");
   });
+  it("distinguishes enlarged reader input from native capture evidence in live and saved disclosures", () => {
+    const value = resolution();
+    Object.assign(value.evidence[0].regions![0], {
+      regionId: "pokemon-lower-right-identifier",
+      width: 85,
+      height: 26,
+      outputWidth: 170,
+      outputHeight: 52,
+      resampling: "upsampled",
+      pageSegmentationMode: 7,
+    });
+    const html = renderToStaticMarkup(
+      createElement(PrintingEvidenceDetails, {
+        resolution: value,
+        evidence: summarizePrintingEvidence("event", {
+          ...value,
+          state: "catalog-printing-read",
+        }),
+      }),
+    );
+    expect(html).toContain("85 × 26");
+    expect(html).toContain("170 × 52");
+    expect(html).toContain("Upsampled reader input (up to 2×)");
+    expect(html).toContain(
+      "Resampling adds no native detail or independent capture",
+    );
+    expect(html).toContain("single line (7)");
+    expect(html).toContain("540 px");
+  });
   it("escapes malicious literal/catalog text rather than rendering HTML or fetching images", () => {
     const value = resolution();
     value.catalogProvenance!.provider = '<script>alert("catalog")</script>';

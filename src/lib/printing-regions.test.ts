@@ -59,6 +59,8 @@ describe("bounded native printing regions", () => {
       height: 185,
       outputWidth: 600,
       outputHeight: 185,
+      resampling: "native",
+      pageSegmentationMode: 11,
     });
     expect(printingRegionBounds("mtg", 600, 840)[0]).toMatchObject({
       regionId: "mtg-footer",
@@ -69,13 +71,20 @@ describe("bounded native printing regions", () => {
       printingRegionBounds("yugioh", 600, 840).map(({ regionId }) => regionId),
     ).toEqual(["yugioh-set-code", "yugioh-footer"]);
   });
-  it("never increases ROI dimensions or treats enlargement as new native detail", () => {
+  it("bounds reader resampling without treating enlargement as native detail", () => {
     for (const width of [1, 479, 480, 600, 1800, 2400]) {
       const height = Math.round(width * 1.4);
       for (const game of ["pokemon", "mtg", "yugioh"] as const) {
         for (const region of printingRegionBounds(game, width, height)) {
-          expect(region.outputWidth).toBeLessThanOrEqual(region.width);
-          expect(region.outputHeight).toBeLessThanOrEqual(region.height);
+          const maxScale =
+            region.regionId === "pokemon-lower-right-identifier" ? 2 : 1;
+          expect(region.outputWidth).toBeLessThanOrEqual(
+            region.width * maxScale,
+          );
+          expect(region.outputHeight).toBeLessThanOrEqual(
+            region.height * maxScale,
+          );
+          expect(region.x + region.width).toBeLessThanOrEqual(width);
           expect(region.outputWidth).toBeLessThanOrEqual(1800);
           expect(region.y + region.height).toBeLessThanOrEqual(height);
         }
@@ -96,6 +105,36 @@ describe("bounded native printing regions", () => {
     expect(region.sourceMinEdge).toBe(240);
     expect(region.qualityReasons).toContain("source-detail-limited");
     expect(region).not.toHaveProperty("characterHeight");
+  });
+  it("keeps a tight lower-right native ROI and separately identifies 2× single-line input", () => {
+    expect(printingRegionBounds("pokemon", 600, 840)[1]).toEqual({
+      regionId: "pokemon-lower-right-identifier",
+      x: 504,
+      y: 798,
+      width: 85,
+      height: 26,
+      outputWidth: 170,
+      outputHeight: 52,
+      resampling: "upsampled",
+      pageSegmentationMode: 7,
+    });
+    expect(printingRegionBounds("pokemon", 600, 825)[1]).toMatchObject({
+      x: 504,
+      y: 783,
+      width: 85,
+      height: 25,
+      outputWidth: 170,
+      outputHeight: 50,
+    });
+    const regions = measure();
+    expect(regions[1].sourceMinEdge).toBe(600);
+    expect(regions[1].frameId).toBe(regions[0].frameId);
+    expect(regions[1].imageFingerprint).toBe(regions[0].imageFingerprint);
+    expect(regions[1].metrics.sampledPixels).toBe(85 * 26);
+    const capped = printingRegionBounds("pokemon", 8000, 1500)[1];
+    expect(capped.width).toBe(1121);
+    expect(capped.outputWidth).toBe(1800);
+    expect(capped.resampling).toBe("upsampled");
   });
   it("measures clipping in the requested footer independently of bright artwork", () => {
     const image = pixels();

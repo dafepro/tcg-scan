@@ -66,7 +66,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-function harness() {
+function harness(now?: () => number) {
   const read = vi.fn(async (input: PrintingReadInput) => observed(input));
   const dispose = vi.fn();
   const reader = vi.fn((): PrintingReader => ({ read, dispose, busy: false }));
@@ -84,6 +84,7 @@ function harness() {
     (eventId: string, result: PrintingResolution) => string | undefined
   >(() => undefined);
   const session = new PrintingSession({
+    now,
     catalog,
     reader,
     isCurrent,
@@ -115,7 +116,7 @@ afterEach(() => {
 });
 
 describe("printing session coordination", () => {
-  it("issues only one candidate-dependent prompt, then stops on a no-gain read", async () => {
+  it("issues one candidate-dependent prompt and bounds no-gain follow-up reads", async () => {
     const h = harness();
     h.catalog.mockResolvedValue({
       candidates: [ref, { ...ref, key: "other", number: "26" }],
@@ -132,8 +133,10 @@ describe("printing session coordination", () => {
     expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("closer once");
     expect(h.session.needs("event")).toBe(true);
     await h.session.offer(frame(2));
-    expect(h.session.needs("event")).toBe(false);
-    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain("did not establish");
+    expect(h.session.needs("event")).toBe(true);
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
+      "Waiting for the requested view",
+    );
     expect(h.onGuidance).toHaveBeenCalledOnce();
     expect(h.onGuidance.mock.calls[0]).toEqual([
       "event",
@@ -148,6 +151,46 @@ describe("printing session coordination", () => {
         value.includes("closer once"),
       ),
     ).toHaveLength(1);
+    for (let index = 3; index <= 6; index++)
+      await h.session.offer(frame(index));
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    expect(h.read).toHaveBeenCalledTimes(6);
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
+      "No more automatic reads",
+    );
+    h.session.dispose();
+  });
+  it("accepts two fresh literal reads after a delayed response to the actual prompt", async () => {
+    const h = harness();
+    h.catalog.mockResolvedValue({
+      candidates: [ref, { ...ref, key: "other", number: "26" }],
+      catalogCompleteForIdentity: true,
+      scope: "complete",
+    });
+    for (let i = 0; i < 3; i++)
+      h.read.mockImplementationOnce(async (input) => ({
+        ...observed(input),
+        rawText: "",
+        fields: {},
+      }));
+    await h.session.offer(frame(1));
+    await h.session.offer(frame(2));
+    await h.session.offer(frame(3));
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(h.onResolution).not.toHaveBeenCalled();
+    await h.session.offer(frame(4));
+    expect(h.onResolution).not.toHaveBeenCalled();
+    await h.session.offer(frame(5));
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    expect(h.onResolution.mock.calls[0][1]).toMatchObject({
+      state: "catalog-printing-read",
+      priceEligible: false,
+      finish: "unknown",
+      condition: "unknown",
+    });
+    expect(h.session.needs("event")).toBe(false);
     h.session.dispose();
   });
   it("does not reset an occurrence's prompt budget on Pause/cancel", async () => {
@@ -174,7 +217,7 @@ describe("printing session coordination", () => {
     expect(
       h.onDiagnostics.mock.calls[1][1].evidence.map((value) => value.frameId),
     ).toEqual(["frame-2"]);
-    expect(h.session.needs("event")).toBe(false);
+    expect(h.session.needs("event")).toBe(true);
     h.session.dispose();
   });
   it("preserves the baseline successful two reads after an initial empty single-candidate read", async () => {
@@ -653,6 +696,343 @@ describe("printing session coordination", () => {
       catalogCompleteForIdentity: true,
       scope: "late",
     });
+  });
+});
+
+function lateLiteralHarness(now?: () => number) {
+  const h = harness(now);
+  h.catalog.mockResolvedValue({
+    candidates: [ref, { ...ref, key: "other", number: "26" }],
+    catalogCompleteForIdentity: true,
+    scope: "complete",
+  });
+  for (let index = 0; index < 5; index++)
+    h.read.mockImplementationOnce(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+  return h;
+}
+async function offerNormalBudget(h: ReturnType<typeof harness>) {
+  for (let index = 1; index <= 6; index++) await h.session.offer(frame(index));
+}
+
+describe("one bounded late-literal confirmation", () => {
+  it("allows exactly one fresh seventh capture after the sixth read first separates the catalog", async () => {
+    const h = lateLiteralHarness();
+    await offerNormalBudget(h);
+    expect(h.onGuidance).toHaveBeenCalledOnce();
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(h.session.needs("event")).toBe(true);
+    expect(h.onStatus.mock.calls.at(-1)?.[1]).toContain(
+      "another original capture",
+    );
+    expect(await h.session.offer(frame(7, { capturedAt: 12_100 }))).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(true);
+    expect(h.onResolution).toHaveBeenCalledOnce();
+    const result = h.onResolution.mock.calls[0][1];
+    expect(result).toMatchObject({
+      state: "catalog-printing-read",
+      priceEligible: false,
+      finish: "unknown",
+      condition: "unknown",
+    });
+    expect(
+      result.evidence
+        .filter((value) => value.fields.collectorNumber)
+        .map((value) => [value.frameId, value.imageFingerprint]),
+    ).toEqual([
+      ["frame-6", "pixels-frame-6"],
+      ["frame-7", "pixels-frame-7"],
+    ]);
+    for (let index = 8; index <= 30; index++)
+      expect(await h.session.offer(frame(index))).toBe(false);
+    expect(h.read).toHaveBeenCalledTimes(7);
+    h.session.dispose();
+  });
+  it.each([
+    "blank",
+    "mismatch",
+    "ambiguous",
+    "unknown-field",
+    "edition",
+    "stale",
+    "incomplete",
+  ])("does not grant a seventh read for a final %s result", async (kind) => {
+    const h = lateLiteralHarness();
+    for (let index = 1; index <= 5; index++)
+      await h.session.offer(frame(index));
+    if (kind === "blank")
+      h.read.mockImplementationOnce(async (input) => ({
+        ...observed(input),
+        rawText: "",
+        fields: {},
+      }));
+    if (kind === "mismatch")
+      h.read.mockImplementationOnce(async (input) => ({
+        ...observed(input),
+        fields: { collectorNumber: "999", printedTotal: "198" },
+      }));
+    if (["ambiguous", "unknown-field", "edition"].includes(kind))
+      h.catalog.mockResolvedValue({
+        candidates: [
+          ref,
+          {
+            ...ref,
+            key: "alternative",
+            ...(kind === "unknown-field"
+              ? { printedTotal: undefined }
+              : kind === "edition"
+                ? { edition: "1ST EDITION" }
+                : {}),
+          },
+        ],
+        catalogCompleteForIdentity: true,
+        scope: "complete",
+      });
+    if (kind === "stale" || kind === "incomplete")
+      h.catalog.mockResolvedValue({
+        candidates: [ref],
+        catalogCompleteForIdentity: kind !== "incomplete",
+        scope: "snapshot",
+        provenance: {
+          schemaVersion: 1,
+          snapshotId: "sha256:" + "a".repeat(64),
+          provider: "test",
+          scope: "test",
+          fetchedAt: "2026-10-14T00:00:00Z",
+          stale: kind === "stale",
+          completeWithinScope: kind !== "incomplete",
+          candidateCount: 1,
+        },
+      });
+    await h.session.offer(frame(6));
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    expect(h.read).toHaveBeenCalledTimes(6);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it("does not treat a repeated earlier literal with identical fingerprints as newly useful", async () => {
+    const h = harness();
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      imageFingerprint: "same-pixels",
+    }));
+    await offerNormalBudget(h);
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it.each([
+    "blank",
+    "fingerprint",
+    "capture-id",
+    "conflict",
+    "failure",
+    "storage-failure",
+  ])(
+    "consumes the only extra opportunity after %s without renewal",
+    async (kind) => {
+      const h = lateLiteralHarness();
+      await offerNormalBudget(h);
+      if (kind === "failure")
+        h.read.mockRejectedValueOnce(new Error("reader failed"));
+      if (kind === "storage-failure")
+        h.onResolution.mockReturnValue("Storage failed");
+      if (kind !== "failure")
+        h.read.mockImplementationOnce(async (input) => ({
+          ...observed(input),
+          ...(kind === "blank" ? { rawText: "", fields: {} } : {}),
+          ...(kind === "fingerprint"
+            ? { imageFingerprint: "pixels-frame-6" }
+            : {}),
+          ...(kind === "capture-id" ? { frameId: "frame-6" } : {}),
+          ...(kind === "conflict"
+            ? { fields: { collectorNumber: "26", printedTotal: "198" } }
+            : {}),
+        }));
+      await h.session.offer(frame(7));
+      expect(h.session.needs("event")).toBe(false);
+      for (let index = 8; index <= 30; index++)
+        expect(await h.session.offer(frame(index))).toBe(false);
+      expect(h.read).toHaveBeenCalledTimes(7);
+      if (kind !== "storage-failure")
+        expect(h.onResolution).not.toHaveBeenCalled();
+      expect(success(h.onStatus)).toHaveLength(0);
+      h.session.dispose();
+    },
+  );
+  it("does not extend when the sixth read is blank after an earlier useful literal", async () => {
+    const h = harness();
+    await h.session.offer(frame());
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+    for (let index = 2; index <= 6; index++)
+      await h.session.offer(frame(index));
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it("does not extend after an earlier reader failure", async () => {
+    const h = harness();
+    h.read.mockRejectedValueOnce(new Error("timeout"));
+    for (let index = 2; index <= 5; index++)
+      h.read.mockImplementationOnce(async (input) => ({
+        ...observed(input),
+        rawText: "",
+        fields: {},
+      }));
+    await offerNormalBudget(h);
+    expect(h.session.needs("event")).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it.each(["cancel", "forget", "dispose", "eof"] as const)(
+    "cannot publish a pending extra read after %s",
+    async (kind) => {
+      const h = lateLiteralHarness();
+      await offerNormalBudget(h);
+      const pending = deferred<PrintingObservation>();
+      h.read.mockImplementationOnce(() => pending.promise);
+      const running = h.session.offer(frame(7));
+      if (kind === "eof") h.isCurrent.mockReturnValue(false);
+      else if (kind === "forget") h.session.forget("event");
+      else h.session[kind]();
+      const statuses = h.onStatus.mock.calls.length;
+      pending.resolve(observed(h.read.mock.calls[6][0]));
+      expect(await running).toBe(false);
+      expect(h.onResolution).not.toHaveBeenCalled();
+      expect(h.onStatus).toHaveBeenCalledTimes(statuses);
+      h.session.dispose();
+    },
+  );
+  it.each(["cancel", "forget"] as const)(
+    "does not renew the extra opportunity after %s and six fresh normal reads",
+    async (kind) => {
+      const h = lateLiteralHarness();
+      await offerNormalBudget(h);
+      if (kind === "forget") h.session.forget("event");
+      else h.session.cancel();
+      for (let index = 7; index <= 11; index++)
+        h.read.mockImplementationOnce(async (input) => ({
+          ...observed(input),
+          rawText: "",
+          fields: {},
+        }));
+      for (let index = 7; index <= 12; index++)
+        await h.session.offer(frame(index));
+      expect(h.read).toHaveBeenCalledTimes(12);
+      expect(h.session.needs("event")).toBe(false);
+      expect(await h.session.offer(frame(13))).toBe(false);
+      expect(h.onResolution).not.toHaveBeenCalled();
+      h.session.dispose();
+    },
+  );
+  it("does not renew a granted opportunity after the observation cache evicts the event", async () => {
+    const h = lateLiteralHarness();
+    await offerNormalBudget(h);
+    for (let index = 0; index < 30; index++)
+      await h.session.offer(frame(1, { eventId: `other-${index}` }));
+    for (let index = 7; index <= 11; index++)
+      h.read.mockImplementationOnce(async (input) => ({
+        ...observed(input),
+        rawText: "",
+        fields: {},
+      }));
+    for (let index = 7; index <= 12; index++)
+      await h.session.offer(frame(index));
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(13))).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    h.session.dispose();
+  });
+  it("fails closed for extra opportunities when the bounded lifetime ledger saturates", async () => {
+    const h = harness(() => 0);
+    h.read.mockImplementation(async (input) => ({
+      ...observed(input),
+      rawText: "",
+      fields: {},
+    }));
+    for (let index = 0; index < 2500; index++)
+      await h.session.offer(frame(1, { eventId: `earlier-${index}` }));
+    for (let index = 1; index <= 5; index++)
+      await h.session.offer(frame(index));
+    h.read.mockImplementationOnce(async (input) => observed(input));
+    await h.session.offer(frame(6));
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    h.session.dispose();
+  });
+  it("does not grant after 90 seconds of actual lifetime even if media timestamps are short", async () => {
+    let now = 0;
+    const h = lateLiteralHarness(() => now);
+    for (let index = 1; index <= 5; index++)
+      await h.session.offer(frame(index));
+    now = 90_000;
+    await h.session.offer(frame(6));
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    h.session.dispose();
+  });
+  it("expires an unused opportunity 20 seconds after grant", async () => {
+    let now = 0;
+    const h = lateLiteralHarness(() => now);
+    await offerNormalBudget(h);
+    now = 19_999;
+    expect(h.session.needs("event")).toBe(true);
+    now = 20_000;
+    expect(h.session.needs("event")).toBe(false);
+    expect(await h.session.offer(frame(7))).toBe(false);
+    expect(h.read).toHaveBeenCalledTimes(6);
+    h.session.dispose();
+  });
+  it.each([0, 85_000])(
+    "times out pending confirmation at the earlier grant/lifetime deadline (grant at %i ms)",
+    async (grantAt) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const h = lateLiteralHarness(() => Date.now());
+      for (let index = 1; index <= 5; index++)
+        await h.session.offer(frame(index));
+      await vi.advanceTimersByTimeAsync(grantAt);
+      await h.session.offer(frame(6));
+      const pending = deferred<PrintingObservation>();
+      h.read.mockImplementationOnce(() => pending.promise);
+      const running = h.session.offer(frame(7));
+      const remaining = Math.min(20_000, 90_000 - grantAt);
+      await vi.advanceTimersByTimeAsync(remaining - 1);
+      expect(h.session.busy).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await running).toBe(false);
+      expect(h.session.busy).toBe(false);
+      expect(h.read.mock.calls[6][0].signal.aborted).toBe(true);
+      expect(h.session.needs("event")).toBe(false);
+      pending.resolve(observed(h.read.mock.calls[6][0]));
+      await Promise.resolve();
+      expect(h.onResolution).not.toHaveBeenCalled();
+      expect(await h.session.offer(frame(8))).toBe(false);
+      h.session.dispose();
+    },
+  );
+  it("rejects a result past the monotonic deadline even before its timer fires", async () => {
+    let now = 0;
+    const h = lateLiteralHarness(() => now);
+    await offerNormalBudget(h);
+    h.read.mockImplementationOnce(async (input) => {
+      now = 20_000;
+      return observed(input);
+    });
+    expect(await h.session.offer(frame(7))).toBe(false);
+    expect(h.onResolution).not.toHaveBeenCalled();
+    expect(h.onDiagnostics).toHaveBeenCalledTimes(6);
+    expect(h.session.needs("event")).toBe(false);
+    h.session.dispose();
   });
 });
 

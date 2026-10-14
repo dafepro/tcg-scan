@@ -6,6 +6,7 @@ import type { ReferenceMetadata } from "./vision/types";
 import type { PrintingCatalogProvenance } from "./printing-evidence";
 import {
   createPrintingReader,
+  printingCandidateRelation,
   resolvePrintingEvidence,
 } from "./printing-refinement";
 import type {
@@ -36,8 +37,22 @@ interface EventState {
   attempts: number;
   lastAttempt: number;
   done: boolean;
+  confirmationDeadline?: number;
 }
+interface ConfirmationBudget {
+  firstOfferedAt: number;
+  candidateSeen: boolean;
+  granted: boolean;
+  blocked: boolean;
+}
+const CONFIRMATION_LIMITS = Object.freeze({
+  rememberedEvents: 2500,
+  occurrenceMs: 90_000,
+  afterGrantMs: 20_000,
+});
 interface Dependencies {
+  /** Monotonic elapsed time, independent of media capture timestamps. */
+  now?(): number;
   catalog(
     reference: ReferenceMetadata,
     options: { signal: AbortSignal },
@@ -61,15 +76,27 @@ export class PrintingSession {
   private promptedEvents = new Map<string, string>();
   private promptBudgetSaturated = false;
   private events = new Map<string, EventState>();
+  /** No pixels/evidence. Never evicted or renewed by Pause, Undo or cache churn. */
+  private confirmationBudgets = new Map<string, ConfirmationBudget>();
+  private readonly now: () => number;
   private generation = 0;
   private disposed = false;
-  constructor(private readonly dependencies: Dependencies) {}
+  constructor(private readonly dependencies: Dependencies) {
+    this.now = dependencies.now ?? (() => performance.now());
+  }
   get busy() {
     return !!this.controller;
   }
   needs(eventId: string) {
     const event = this.events.get(eventId);
-    return !event?.done && (event?.attempts ?? 0) < 6;
+    return (
+      !event?.done &&
+      ((event?.attempts ?? 0) < 6 ||
+        (event?.attempts === 6 &&
+          event.confirmationDeadline !== undefined &&
+          !this.confirmationBudgets.get(eventId)?.blocked &&
+          this.now() < event.confirmationDeadline))
+    );
   }
   ready(eventId: string, capturedAt: number) {
     return (
@@ -88,11 +115,15 @@ export class PrintingSession {
     this.reader?.dispose();
     this.reader = undefined;
     this.events.clear();
+    for (const budget of this.confirmationBudgets.values())
+      budget.blocked = true;
     this.activeEventId = undefined;
   }
   forget(eventId: string) {
     this.events.delete(eventId);
     this.promptedEvents.delete(eventId);
+    const budget = this.confirmationBudgets.get(eventId);
+    if (budget) budget.blocked = true;
     // Undo of a different receipt must not cancel another occurrence's reader.
     if (this.activeEventId === eventId) {
       this.generation++;
@@ -107,6 +138,7 @@ export class PrintingSession {
     this.disposed = true;
     this.cancel();
     this.promptedEvents.clear();
+    this.confirmationBudgets.clear();
   }
   async offer(frame: PrintingFrame): Promise<boolean> {
     if (
@@ -120,16 +152,37 @@ export class PrintingSession {
       frame.image.height < 640
     )
       return false;
-    const event = this.events.get(frame.eventId) ?? {
+    let budget = this.confirmationBudgets.get(frame.eventId);
+    if (
+      !budget &&
+      this.confirmationBudgets.size < CONFIRMATION_LIMITS.rememberedEvents
+    ) {
+      budget = {
+        firstOfferedAt: this.now(),
+        candidateSeen: false,
+        granted: false,
+        blocked: false,
+      };
+      this.confirmationBudgets.set(frame.eventId, budget);
+    }
+    const event: EventState = this.events.get(frame.eventId) ?? {
       observations: [],
       attempts: 0,
       lastAttempt: -Infinity,
       done: false,
     };
     if (frame.capturedAt - event.lastAttempt < 1500) return false;
-    if (!this.events.has(frame.eventId) && this.events.size >= 30)
-      this.events.delete(this.events.keys().next().value!);
+    if (!this.events.has(frame.eventId) && this.events.size >= 30) {
+      const evictedId = this.events.keys().next().value!;
+      const evictedBudget = this.confirmationBudgets.get(evictedId);
+      if (evictedBudget) evictedBudget.blocked = true;
+      this.events.delete(evictedId);
+    }
     this.events.set(frame.eventId, event);
+    const confirmationRead = event.attempts === 6;
+    // Consume before asynchronous work: failure, cancellation or a stale result
+    // cannot reissue this occurrence's one extra opportunity.
+    if (confirmationRead && budget) budget.blocked = true;
     event.attempts++;
     event.lastAttempt = frame.capturedAt;
     const controller = new AbortController(),
@@ -169,7 +222,9 @@ export class PrintingSession {
         new Promise<never>((_, reject) => {
           deadline = setTimeout(
             () => reject(new Error("Printing refinement timed out")),
-            40_000,
+            confirmationRead
+              ? Math.max(0, event.confirmationDeadline! - this.now())
+              : 40_000,
           );
           controller.signal.addEventListener(
             "abort",
@@ -179,8 +234,14 @@ export class PrintingSession {
         }),
       ]);
       if (!current()) return false;
+      if (confirmationRead && !(this.now() < event.confirmationDeadline!)) {
+        status(
+          "Printing remains unconfirmed. No more automatic reads for this occurrence; review it later.",
+        );
+        return false;
+      }
       event.observations = [...event.observations, observation].slice(-8);
-      const resolution = resolvePrintingEvidence({
+      const resolveInput = {
         game: frame.reference.game,
         sessionId: frame.sessionId,
         eventId: frame.eventId,
@@ -190,7 +251,53 @@ export class PrintingSession {
         catalogCompleteForIdentity: catalog.catalogCompleteForIdentity,
         catalogProvenance: catalog.provenance,
         observations: event.observations,
+      };
+      const resolution = resolvePrintingEvidence(resolveInput);
+      // The resolver checks distinct captures before catalog compatibility. Its
+      // waiting reason alone therefore cannot justify a confirmation read.
+      // Validate the actual latest observation in isolation, then use the same
+      // catalog relation as the resolver. Never manufacture a second vote.
+      const latest = resolvePrintingEvidence({
+        ...resolveInput,
+        observations: [observation],
       });
+      const relations = latest.reasons.includes(
+        "two-distinct-captures-required",
+      )
+        ? catalog.candidates.map((candidate) =>
+            printingCandidateRelation(candidate, observation.fields),
+          )
+        : [];
+      const uniqueLiteral =
+        relations.filter((relation) => relation === "match").length === 1 &&
+        !relations.includes("unknown");
+      if (budget) {
+        if (
+          event.attempts === 6 &&
+          !budget.blocked &&
+          !budget.granted &&
+          !budget.candidateSeen &&
+          uniqueLiteral &&
+          !catalog.provenance?.stale &&
+          catalog.provenance?.completeWithinScope !== false &&
+          resolution.reasons.includes("two-distinct-captures-required")
+        ) {
+          const now = this.now();
+          const expiresAt = Math.min(
+            budget.firstOfferedAt + CONFIRMATION_LIMITS.occurrenceMs,
+            now + CONFIRMATION_LIMITS.afterGrantMs,
+          );
+          if (
+            Number.isFinite(now) &&
+            now >= budget.firstOfferedAt &&
+            now < expiresAt
+          ) {
+            budget.granted = true;
+            event.confirmationDeadline = expiresAt;
+          }
+        }
+        budget.candidateSeen ||= uniqueLiteral;
+      }
       try {
         if (this.dependencies.onDiagnostics)
           this.dependencies.onDiagnostics(
@@ -200,7 +307,11 @@ export class PrintingSession {
       } catch {
         /* Optional diagnostics cannot alter persistence or reader ownership. */
       }
-      if (!current()) return false;
+      if (
+        !current() ||
+        (confirmationRead && !(this.now() < event.confirmationDeadline!))
+      )
+        return false;
       if (resolution.state === "catalog-printing-read") {
         const failure = this.dependencies.onResolution(
           frame.eventId,
@@ -246,20 +357,29 @@ export class PrintingSession {
         if (
           guidance.action === "review" &&
           guidance.reason !== "catalog-unavailable" &&
+          // A prompt requests a changed view. The immediately following capture
+          // may still precede the user response; retain the existing six-read
+          // budget instead of terminating on that first no-gain view.
+          guidance.reason !== "prompt-budget-exhausted" &&
           (guidance.reason !== "no-supported-literal-disagreement" ||
             resolution.reasons.includes("printing-or-variant-ambiguous"))
-        )
+        ) {
           event.done = true;
+          if (budget) budget.blocked = true;
+        }
         status(
           catalog.error
             ? "Printing lookup unavailable. Identity remains saved."
-            : event.attempts >= 6
+            : event.attempts >= 6 && !this.needs(frame.eventId)
               ? "Printing remains unconfirmed. No more automatic reads for this occurrence; review it later."
-              : guidance.message,
+              : guidance.reason === "prompt-budget-exhausted"
+                ? "Printing unconfirmed. Waiting for the requested view within the remaining read budget."
+                : guidance.message,
         );
       }
       return true;
     } catch {
+      if (budget) budget.blocked = true;
       if (current())
         status(
           "Printed identifiers could not be read. Identity remains saved.",

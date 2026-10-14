@@ -1,0 +1,274 @@
+{
+  "note": "Offline Node Tesseract on catalog source images and explicit synthetic masks; not browser adapter, Live video, or physical card capture validation. Metrics omitted: no invented quality measurement.",
+  "rows": [
+    {
+      "id": "base1-4",
+      "mask": null,
+      "nativeWidth": 600,
+      "nativeHeight": 825,
+      "sourceSha256": "b05eac72e977adb4c6004640deb48f5cf06907577e6e1a10fd783f272508880b",
+      "maskBounds": null,
+      "regions": [
+        {
+          "regionId": "pokemon-footer",
+          "x": 0,
+          "y": 643,
+          "width": 600,
+          "height": 182,
+          "outputWidth": 600,
+          "outputHeight": 182,
+          "resampling": "native",
+          "pageSegmentationMode": 11,
+          "rawText": "1 VV\n\n1) 10 Lharzarg ir OrQor.L0 Use Uys attack.\n\nweakness\n\nresistance\n\nretreat cost\n\n§\n\n-30\n\na\n\nfe\n\n| Spits fire that is hot enough to melt boulders.\n\n| unintentionally couse forest fires. LV.76 #6\n\n159536589 Nord Crema GAMEFREAK, © 999 Wir 41102 *\n",
+          "ms": 359,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base1-4:null",
+          "imageFingerprint": "b05eac72e977adb4c6004640deb48f5cf06907577e6e1a10fd783f272508880b",
+          "sourceMinEdge": 600
+        },
+        {
+          "regionId": "pokemon-lower-right-identifier",
+          "x": 504,
+          "y": 783,
+          "width": 85,
+          "height": 25,
+          "outputWidth": 170,
+          "outputHeight": 50,
+          "resampling": "upsampled",
+          "pageSegmentationMode": 7,
+          "rawText": "an x\n",
+          "ms": 25,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base1-4:null",
+          "imageFingerprint": "b05eac72e977adb4c6004640deb48f5cf06907577e6e1a10fd783f272508880b",
+          "sourceMinEdge": 600
+        }
+      ],
+      "baselineFields": {},
+      "baselineIssues": [],
+      "combinedFields": {},
+      "combinedIssues": []
+    },
+    {
+      "id": "base4-4",
+      "mask": null,
+      "nativeWidth": 600,
+      "nativeHeight": 825,
+      "sourceSha256": "5e0d1400fc595d948b307b80b0b189f0498071a7d21650e901acfbba3c1b46f3",
+      "maskBounds": null,
+      "regions": [
+        {
+          "regionId": "pokemon-footer",
+          "x": 0,
+          "y": 643,
+          "width": 600,
+          "height": 182,
+          "outputWidth": 600,
+          "outputHeight": 182,
+          "resampling": "native",
+          "pageSegmentationMode": 11,
+          "rawText": "& 0 this attack.\n\nweakness\n\nresistance\n\nretreat cost\n\n©\n\n& 30\n\n8\n\nire that is hot enough to melt boulders. Kiiown to\n\nunintentionally cause forest fires. LV.\n\nMigs. Mitsuhiro Rita ©1995, 9,58 Nintendo, Crestures, GAMEFREAK. QS:\n\n41130 *\n",
+          "ms": 240,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-4:null",
+          "imageFingerprint": "5e0d1400fc595d948b307b80b0b189f0498071a7d21650e901acfbba3c1b46f3",
+          "sourceMinEdge": 600
+        },
+        {
+          "regionId": "pokemon-lower-right-identifier",
+          "x": 504,
+          "y": 783,
+          "width": 85,
+          "height": 25,
+          "outputWidth": 170,
+          "outputHeight": 50,
+          "resampling": "upsampled",
+          "pageSegmentationMode": 7,
+          "rawText": "4/130 x\n",
+          "ms": 11,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-4:null",
+          "imageFingerprint": "5e0d1400fc595d948b307b80b0b189f0498071a7d21650e901acfbba3c1b46f3",
+          "sourceMinEdge": 600
+        }
+      ],
+      "baselineFields": {},
+      "baselineIssues": [],
+      "combinedFields": {
+        "collectorNumber": "4",
+        "printedTotal": "130"
+      },
+      "combinedIssues": []
+    },
+    {
+      "id": "base4-87",
+      "mask": null,
+      "nativeWidth": 600,
+      "nativeHeight": 825,
+      "sourceSha256": "34ff25dbe35e5775159635ed0605ff692b4758e474e95db59ff890fbe1d1cad7",
+      "maskBounds": null,
+      "regions": [
+        {
+          "regionId": "pokemon-footer",
+          "x": 0,
+          "y": 643,
+          "width": 600,
+          "height": 182,
+          "outputWidth": 600,
+          "outputHeight": 182,
+          "resampling": "native",
+          "pageSegmentationMode": 11,
+          "rawText": "to itself.\n\nweakness\n\nresistance\n\nretreat cost\n\nWhen\n\nreral of these Pokémon gather their electricity can\n\ncause\n\nLv. 1\n\nthing storms.\n\nius. Mitsuhiro Arita ©1995, 3,38 Nintendo, Creatures, GAMEFREAK. ©1999-2000 Wizards 87/130 @\n",
+          "ms": 202,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-87:null",
+          "imageFingerprint": "34ff25dbe35e5775159635ed0605ff692b4758e474e95db59ff890fbe1d1cad7",
+          "sourceMinEdge": 600
+        },
+        {
+          "regionId": "pokemon-lower-right-identifier",
+          "x": 504,
+          "y": 783,
+          "width": 85,
+          "height": 25,
+          "outputWidth": 170,
+          "outputHeight": 50,
+          "resampling": "upsampled",
+          "pageSegmentationMode": 7,
+          "rawText": "87130 @\n",
+          "ms": 12,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-87:null",
+          "imageFingerprint": "34ff25dbe35e5775159635ed0605ff692b4758e474e95db59ff890fbe1d1cad7",
+          "sourceMinEdge": 600
+        }
+      ],
+      "baselineFields": {
+        "collectorNumber": "87",
+        "printedTotal": "130"
+      },
+      "baselineIssues": [],
+      "combinedFields": {
+        "collectorNumber": "87",
+        "printedTotal": "130"
+      },
+      "combinedIssues": []
+    },
+    {
+      "id": "base1-4",
+      "mask": "identifier",
+      "nativeWidth": 600,
+      "nativeHeight": 825,
+      "sourceSha256": "b05eac72e977adb4c6004640deb48f5cf06907577e6e1a10fd783f272508880b",
+      "maskBounds": {
+        "regionId": "pokemon-lower-right-identifier",
+        "x": 372,
+        "y": 750,
+        "width": 216,
+        "height": 58,
+        "outputWidth": 432,
+        "outputHeight": 116,
+        "resampling": "upsampled",
+        "pageSegmentationMode": 7
+      },
+      "regions": [
+        {
+          "regionId": "pokemon-footer",
+          "x": 0,
+          "y": 643,
+          "width": 600,
+          "height": 182,
+          "outputWidth": 600,
+          "outputHeight": 182,
+          "resampling": "native",
+          "pageSegmentationMode": 11,
+          "rawText": "1 VV\n\n[06107 LO Lharizard in order to use this attack.\n\nresistance\n\nretreat cost\n\nweakness\n\n-30\n\n=\n\nSpits fire that is hot enough to melt be\"\n\nunintentionally cause forest fires. LV.\n\nily\n\n>\n\n=\n\n©\n\nGAl\n",
+          "ms": 228,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base1-4:identifier",
+          "imageFingerprint": "615025a57abd7ebacf4b16db6e682ab02923665f7ec82a79f43a5fa107fec31b",
+          "sourceMinEdge": 600
+        },
+        {
+          "regionId": "pokemon-lower-right-identifier",
+          "x": 504,
+          "y": 783,
+          "width": 85,
+          "height": 25,
+          "outputWidth": 170,
+          "outputHeight": 50,
+          "resampling": "upsampled",
+          "pageSegmentationMode": 7,
+          "rawText": "|\n",
+          "ms": 3,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base1-4:identifier",
+          "imageFingerprint": "615025a57abd7ebacf4b16db6e682ab02923665f7ec82a79f43a5fa107fec31b",
+          "sourceMinEdge": 600
+        }
+      ],
+      "baselineFields": {},
+      "baselineIssues": [],
+      "combinedFields": {},
+      "combinedIssues": []
+    },
+    {
+      "id": "base4-87",
+      "mask": "footer",
+      "nativeWidth": 600,
+      "nativeHeight": 825,
+      "sourceSha256": "34ff25dbe35e5775159635ed0605ff692b4758e474e95db59ff890fbe1d1cad7",
+      "maskBounds": {
+        "regionId": "pokemon-footer",
+        "x": 0,
+        "y": 643,
+        "width": 600,
+        "height": 182,
+        "outputWidth": 600,
+        "outputHeight": 182,
+        "resampling": "native",
+        "pageSegmentationMode": 11
+      },
+      "regions": [
+        {
+          "regionId": "pokemon-footer",
+          "x": 0,
+          "y": 643,
+          "width": 600,
+          "height": 182,
+          "outputWidth": 600,
+          "outputHeight": 182,
+          "resampling": "native",
+          "pageSegmentationMode": 11,
+          "rawText": "",
+          "ms": 8,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-87:footer",
+          "imageFingerprint": "4d56d4ca5110cbba098b03eab57eaef589da6e4e6b27e8ca1ce9b4081fbe51c0",
+          "sourceMinEdge": 600
+        },
+        {
+          "regionId": "pokemon-lower-right-identifier",
+          "x": 504,
+          "y": 783,
+          "width": 85,
+          "height": 25,
+          "outputWidth": 170,
+          "outputHeight": 50,
+          "resampling": "upsampled",
+          "pageSegmentationMode": 7,
+          "rawText": "SL\n",
+          "ms": 21,
+          "registryVersion": "printing-regions-v2",
+          "frameId": "base4-87:footer",
+          "imageFingerprint": "4d56d4ca5110cbba098b03eab57eaef589da6e4e6b27e8ca1ce9b4081fbe51c0",
+          "sourceMinEdge": 600
+        }
+      ],
+      "baselineFields": {},
+      "baselineIssues": [],
+      "combinedFields": {},
+      "combinedIssues": []
+    }
+  ]
+}

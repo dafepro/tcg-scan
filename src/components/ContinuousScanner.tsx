@@ -71,6 +71,8 @@ import type { PrintingResolution } from "../lib/printing-refinement";
 import { getPrintingCandidates } from "../lib/printing-catalog";
 import { pendingPrintingTracks } from "../lib/printing-scheduler";
 import { captureClock, LiveCaptureLoop } from "../lib/live-capture";
+import { LiveVideoSource } from "../lib/live-video-source";
+import { holdLiveVideoInput } from "../lib/live-input-hold";
 import type { LiveCaptureContext } from "../lib/live-capture";
 import type { ScanContinuityPolicy } from "../lib/scan-session";
 import "./continuous-scanner.css";
@@ -137,11 +139,15 @@ export default function ContinuousScanner({
   const liveCapture = useRef<LiveCaptureLoop | null>(null);
   const client = useRef<VisionClient | null>(null);
   const stream = useRef<MediaStream | null>(null);
+  const fileSource = useRef<LiveVideoSource | null>(null);
+  const [sourceKind, setSourceKind] = useState<"camera" | "video">("camera");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generation = useRef(0);
   const frameEpoch = useRef(0);
   const running = useRef(false);
   const pausedRef = useRef(false);
+  const inputHeldRef = useRef(false);
+  const [inputHeld, setInputHeld] = useState(false);
   const autoRef = useRef(preferences.autoSave);
   const session = useRef<ScanSession | null>(null);
   const printing = useRef<PrintingSession | null>(null);
@@ -235,6 +241,8 @@ export default function ContinuousScanner({
       liveCapture.current?.dispose();
       liveCapture.current = null;
       lifecycleGeneration.current++;
+      fileSource.current?.dispose();
+      fileSource.current = null;
       running.current = false;
       if (timer.current) clearTimeout(timer.current);
       stream.current?.getTracks().forEach((t) => t.stop());
@@ -259,8 +267,11 @@ export default function ContinuousScanner({
     );
   }, []);
   const pause = useCallback(() => {
+    inputHeldRef.current = false;
+    setInputHeld(false);
     cancelPrintingStatus();
     liveCapture.current?.pause();
+    fileSource.current?.pause();
     frameEpoch.current++;
     session.current?.interruptEvidence();
     if (timer.current) clearTimeout(timer.current);
@@ -269,6 +280,8 @@ export default function ContinuousScanner({
     setMessage("Paused. Existing tracks remain counted.");
   }, [cancelPrintingStatus]);
   const stop = useCallback(() => {
+    inputHeldRef.current = false;
+    setInputHeld(false);
     liveCapture.current?.dispose();
     liveCapture.current = null;
     cancelPrintingStatus();
@@ -280,6 +293,8 @@ export default function ContinuousScanner({
     if (timer.current) clearTimeout(timer.current);
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
+    fileSource.current?.dispose();
+    fileSource.current = null;
     if (video.current) video.current.srcObject = null;
     client.current?.dispose();
     client.current = null;
@@ -294,7 +309,7 @@ export default function ContinuousScanner({
     setBusy(false);
     setPhotoPreparing(false);
     setCameraPreparing(false);
-    setMessage("Camera stopped. Start a new session to scan again.");
+    setMessage("Session ended. Start a new session to scan again.");
   }, [cancelPrintingStatus]);
   useEffect(() => {
     const hide = () => {
@@ -507,6 +522,7 @@ export default function ContinuousScanner({
     frameId: string,
     scan: ScanSession,
   ) {
+    if (inputHeldRef.current) return;
     for (const track of snapshot) {
       const evidence = track.evidence;
       if (
@@ -546,6 +562,7 @@ export default function ContinuousScanner({
       epoch === frameEpoch.current &&
       running.current &&
       !pausedRef.current &&
+      !inputHeldRef.current &&
       session.current === scan;
     if (!scan || !current()) return;
     const { capturedAt, image, transport } = context.capture;
@@ -720,6 +737,7 @@ export default function ContinuousScanner({
       return;
     if (
       !pausedRef.current &&
+      !inputHeldRef.current &&
       video.current &&
       video.current.readyState >= 2 &&
       client.current &&
@@ -740,7 +758,8 @@ export default function ContinuousScanner({
           gen !== generation.current ||
           epoch !== frameEpoch.current ||
           !running.current ||
-          pausedRef.current
+          pausedRef.current ||
+          inputHeldRef.current
         )
           return;
         setCaptureTransport(pixels.transport);
@@ -768,7 +787,8 @@ export default function ContinuousScanner({
           gen !== generation.current ||
           epoch !== frameEpoch.current ||
           !running.current ||
-          pausedRef.current
+          pausedRef.current ||
+          inputHeldRef.current
         )
           return;
         setSize({ width: result.width, height: result.height });
@@ -835,6 +855,7 @@ export default function ContinuousScanner({
     if (
       running.current &&
       !pausedRef.current &&
+      !inputHeldRef.current &&
       gen === generation.current &&
       epoch === frameEpoch.current
     ) {
@@ -845,15 +866,25 @@ export default function ContinuousScanner({
       );
     }
   }
-  async function start() {
-    if (busy || active || !packsReady || !installedCount) return;
+  async function start(file?: File) {
+    if (
+      busy ||
+      active ||
+      newSessionPending.current ||
+      !packsReady ||
+      !installedCount
+    )
+      return;
     newSessionPending.current = true;
     diagnostics.reset("live");
     diagnostics.reset("printing");
     setTimings(undefined);
     setCameraPreparing(true);
+    setSourceKind(file ? "video" : "camera");
     setMessage(
-      "Waiting for camera access. You can cancel preparation at any time.",
+      file
+        ? "Opening local test video. You can cancel preparation at any time."
+        : "Waiting for camera access. You can cancel preparation at any time.",
     );
     setBusy(true);
     setError("");
@@ -861,61 +892,94 @@ export default function ContinuousScanner({
     frameCapture.current = null;
     setCaptureTransport("videoframe-pool");
     const gen = ++generation.current;
-    let openingCamera = true;
+    let openingCamera = !file;
     try {
-      if (!window.isSecureContext)
-        throw new Error(
-          "Camera access needs HTTPS or localhost. Open this app on a secure address, or use a multi-card photo.",
-        );
-      if (!navigator.mediaDevices?.getUserMedia)
-        throw new Error(
-          "This browser does not support camera access. Try a current browser, or use a multi-card photo.",
-        );
-      const media = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: {
-            ideal: mode === "binder" ? 2880 : 1920,
-            max: mode === "binder" ? 2880 : 1920,
-          },
-          height: {
-            ideal: mode === "binder" ? 1620 : 1080,
-            max: mode === "binder" ? 2880 : 1920,
-          },
-        },
-        audio: false,
-      });
-      if (gen !== generation.current) {
-        media.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      stream.current = media;
-      running.current = true;
-      setActive(true);
-      for (const t of media.getVideoTracks()) {
-        t.onended = () => {
-          if (running.current && gen === generation.current) {
-            pause();
-            setError("Camera disconnected. Stop and restart to reconnect.");
-          }
-        };
-        t.onmute = () => {
-          if (running.current && gen === generation.current) {
-            pause();
-            setError(
-              "Camera frames interrupted. Resume only when the camera is available again.",
+      const element = video.current;
+      if (!element) throw new Error("The video preview is unavailable.");
+      if (file) {
+        const source = new LiveVideoSource(
+          element,
+          () => {
+            if (gen !== generation.current) return;
+            const preparing = newSessionPending.current;
+            stop();
+            setMessage(
+              preparing
+                ? "Video ended during preparation. Your previous session is kept."
+                : "Test video ended. Saved cards remain in your collection.",
             );
-          }
-        };
-      }
-      if (video.current) {
-        video.current.srcObject = media;
-        await video.current.play();
+          },
+          (error) => {
+            if (gen !== generation.current) return;
+            stop();
+            setError(error.message);
+          },
+        );
+        fileSource.current = source;
+        await source.open(file, mode === "binder" ? 2880 : 1920);
+      } else {
+        if (!window.isSecureContext)
+          throw new Error(
+            "Camera access needs HTTPS or localhost. Open this app on a secure address, or use a multi-card photo.",
+          );
+        if (!navigator.mediaDevices?.getUserMedia)
+          throw new Error(
+            "This browser does not support camera access. Try a current browser, or use a multi-card photo.",
+          );
+        const media = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: {
+              ideal: mode === "binder" ? 2880 : 1920,
+              max: mode === "binder" ? 2880 : 1920,
+            },
+            height: {
+              ideal: mode === "binder" ? 1620 : 1080,
+              max: mode === "binder" ? 2880 : 1920,
+            },
+          },
+          audio: false,
+        });
+        if (gen !== generation.current) {
+          media.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream.current = media;
+        running.current = true;
+        setActive(true);
+        for (const t of media.getVideoTracks()) {
+          t.onended = () => {
+            if (running.current && gen === generation.current) {
+              pause();
+              setError("Camera disconnected. Stop and restart to reconnect.");
+            }
+          };
+          t.onmute = () => {
+            if (running.current && gen === generation.current) {
+              pause();
+              setError(
+                "Camera frames interrupted. Resume only when the camera is available again.",
+              );
+            }
+          };
+        }
+        if (video.current) {
+          video.current.srcObject = media;
+          await video.current.play();
+        }
       }
       if (gen !== generation.current) return;
       openingCamera = false;
       const local = await prepare(gen);
       if (gen !== generation.current) return;
+      if (file && !(await fileSource.current?.play())) return;
+      if (gen !== generation.current) return;
+      running.current = true;
+      pausedRef.current = false;
+      inputHeldRef.current = false;
+      setInputHeld(false);
+      setPaused(false);
+      setActive(true);
       // Commit a new session only after permission, playback and model readiness.
       // Cancelled/failed preparation leaves the previous subtotal and receipts intact.
       session.current = new ScanSession(
@@ -972,6 +1036,62 @@ export default function ContinuousScanner({
         stop();
         setError(openingCamera ? cameraFailureMessage(e) : errorMessage(e));
       }
+    }
+  }
+  function holdTestInput() {
+    const source = fileSource.current;
+    if (
+      !source ||
+      !running.current ||
+      pausedRef.current ||
+      newSessionPending.current ||
+      inputHeldRef.current
+    )
+      return;
+    inputHeldRef.current = true;
+    setInputHeld(true);
+    holdLiveVideoInput({
+      source,
+      capture: liveCapture.current,
+      interruptEvidence: () => {
+        frameEpoch.current++;
+        session.current?.interruptEvidence();
+      },
+      cancelPendingFrame: () => {
+        if (timer.current) clearTimeout(timer.current);
+      },
+    });
+    setMessage(
+      "Test input held. Already-started printing reads can finish; no new views are captured. Resume test input when ready.",
+    );
+  }
+  async function resume() {
+    const gen = generation.current;
+    const epoch = frameEpoch.current;
+    try {
+      if (fileSource.current && !(await fileSource.current.play())) return;
+      if (
+        gen !== generation.current ||
+        epoch !== frameEpoch.current ||
+        !running.current
+      )
+        return;
+      pausedRef.current = false;
+      inputHeldRef.current = false;
+      setInputHeld(false);
+      setPaused(false);
+      setError("");
+      setMessage(
+        sourceKind === "video"
+          ? "Playing local test video at 1×."
+          : "Scanning resumed.",
+      );
+      if (liveCapture.current) liveCapture.current.resume();
+      else void frame(gen);
+    } catch (error) {
+      if (gen !== generation.current || epoch !== frameEpoch.current) return;
+      pause();
+      setError(errorMessage(error));
     }
   }
   async function importPacks(files: FileList | null) {
@@ -1344,9 +1464,11 @@ export default function ContinuousScanner({
           ? "preparing"
           : paused
             ? "paused"
-            : active
-              ? "running"
-              : "idle",
+            : inputHeld
+              ? "waiting"
+              : active
+                ? "running"
+                : "idle",
       ...(timings
         ? {
             width: size.width,
@@ -1366,6 +1488,7 @@ export default function ContinuousScanner({
     savePolicy,
     active,
     paused,
+    inputHeld,
     auto,
     busy,
     installedCount,
@@ -1792,7 +1915,8 @@ export default function ContinuousScanner({
                 if (
                   activeMatcher.current !== "learned" &&
                   running.current &&
-                  !pausedRef.current
+                  !pausedRef.current &&
+                  !inputHeldRef.current
                 ) {
                   if (timer.current) clearTimeout(timer.current);
                   void frame(generation.current, frameEpoch.current);
@@ -1803,6 +1927,30 @@ export default function ContinuousScanner({
           </label>
         </div>
         {!needsSetup && databasePanel}
+        <details className="pack-compatibility">
+          <summary>Test video</summary>
+          <p className="scanner-action-help">
+            Run a local MP4 or WebM through Live scanning at 1×. The same
+            recognition and save rules apply, including auto-save to your
+            collection. Up to five minutes, 250 MB, and{" "}
+            {mode === "binder" ? "2880" : "1920"} pixels on the longest edge.
+          </p>
+          <label className="button subtle" aria-disabled={!!uploadDisabled}>
+            <Upload size={16} />
+            Choose test video
+            <input
+              className="sr-only"
+              type="file"
+              accept="video/mp4,video/webm,.mp4,.webm"
+              disabled={!!uploadDisabled}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void start(file);
+              }}
+            />
+          </label>
+        </details>
         <p className="scanner-action-help">
           Pause keeps this session. Ending and starting a new session resets its
           count and may count the same cards again. Your collection is kept.
@@ -1821,7 +1969,7 @@ export default function ContinuousScanner({
                 onClick={() => {
                   stop();
                   setMessage(
-                    "Camera preparation cancelled. Nothing was added.",
+                    "Preparation cancelled. Your previous session is kept.",
                   );
                 }}
               >
@@ -1842,27 +1990,38 @@ export default function ContinuousScanner({
           ) : (
             <>
               <button
-                className="button primary"
+                className={inputHeld ? "button subtle" : "button primary"}
                 disabled={busy}
                 onClick={() => {
-                  if (paused) {
-                    pausedRef.current = false;
-                    setPaused(false);
-                    if (liveCapture.current) liveCapture.current.resume();
-                    else void frame(generation.current);
-                  } else pause();
+                  if (paused) void resume();
+                  else pause();
                 }}
               >
                 {paused ? <Play size={16} /> : <Pause size={16} />}
                 {paused ? "Resume" : "Pause"}
               </button>
+              {sourceKind === "video" && !paused && (
+                <button
+                  className={inputHeld ? "button primary" : "button subtle"}
+                  disabled={busy}
+                  aria-describedby="test-input-hold-help"
+                  onClick={() => {
+                    if (inputHeld) void resume();
+                    else holdTestInput();
+                  }}
+                >
+                  {inputHeld ? "Resume test input" : "Hold test input"}
+                </button>
+              )}
               <button className="button subtle" onClick={stop}>
                 <Square size={15} />
                 End session
               </button>
               <button
                 className="button subtle"
-                disabled={busy || (mode === "stream" && !nextCopyTarget)}
+                disabled={
+                  busy || inputHeld || (mode === "stream" && !nextCopyTarget)
+                }
                 aria-describedby="next-copy-help"
                 onClick={() => {
                   const nextReference =
@@ -1879,7 +2038,8 @@ export default function ContinuousScanner({
                   if (
                     !liveCapture.current &&
                     running.current &&
-                    !pausedRef.current
+                    !pausedRef.current &&
+                    !inputHeldRef.current
                   )
                     void frame(generation.current, frameEpoch.current);
                   setMessage(
@@ -1930,6 +2090,13 @@ export default function ContinuousScanner({
             </button>
           )}
         </div>
+        {active && sourceKind === "video" && (
+          <p className="scanner-action-help" id="test-input-hold-help">
+            {inputHeld
+              ? "Test input held. Already-started printing reads can finish; no new views are captured. Resume test input to continue."
+              : "Local test video · 1× · Live save rules. Hold test input stops new views while already-started printing reads finish. Pause cancels those reads."}
+          </p>
+        )}
         {active && !cameraPreparing && (
           <p className="scanner-action-help" id="next-copy-help">
             {mode === "binder"
@@ -1980,7 +2147,6 @@ export default function ContinuousScanner({
         >
           <video
             ref={video}
-            autoPlay
             muted
             playsInline
             className={photo ? "hidden-video" : ""}

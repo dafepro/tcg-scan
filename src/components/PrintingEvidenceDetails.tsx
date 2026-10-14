@@ -94,6 +94,17 @@ function Region({ region }: { region: PersistedPrintingRegion }) {
         {region.outputHeight} px. Original source short edge:{" "}
         {region.sourceMinEdge} px.
       </p>
+      <p>
+        {region.resampling === "upsampled"
+          ? "Upsampled reader input (up to 2×). Resampling adds no native detail or independent capture."
+          : region.resampling === "downsampled"
+            ? "Downsampled reader input. Native region measurements remain unchanged."
+            : region.resampling === "native"
+              ? "Reader input uses native rectified region dimensions."
+              : "Reader resampling metadata was not recorded."}
+        {region.pageSegmentationMode !== undefined &&
+          ` Page segmentation mode: ${region.pageSegmentationMode === 7 ? "single line (7)" : "sparse text (11)"}.`}
+      </p>
       <p className="printing-evidence-literal">
         {region.literalText
           ? bounded(region.literalText)

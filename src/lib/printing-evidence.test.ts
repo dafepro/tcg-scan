@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { measurePrintingRegions } from "./printing-regions";
 import {
   catalogProvenance,
   parsePrintingEvidence,
@@ -263,4 +264,54 @@ it("ignores YGOPRODeck provider-array positions without erasing actual variant d
     (await catalogProvenance({ ...options, candidates: [one, one, two] }))
       .snapshotId,
   ).not.toBe(a.snapshotId);
+});
+
+it("round-trips explicit native versus bounded 2× reader input and rejects forged enlargement", () => {
+  const r = resolution();
+  r.evidence[0].regions = measurePrintingRegions(
+    {
+      width: 600,
+      height: 840,
+      data: new Uint8ClampedArray(600 * 840 * 4),
+    },
+    {
+      game: "pokemon",
+      frameId: "frame0",
+      imageFingerprint: "fingerprint0",
+      sourceMinEdge: 550,
+    },
+  );
+  const evidence = summarizePrintingEvidence("event", r);
+  const regions = evidence.observations[0].regions!;
+  expect(regions[0].resampling).toBe("native");
+  expect(regions[1]).toMatchObject({
+    width: 85,
+    outputWidth: 170,
+    sourceMinEdge: 550,
+    resampling: "upsampled",
+    pageSegmentationMode: 7,
+  });
+  expect(parsePrintingEvidence(evidence, "event")).toEqual(evidence);
+  for (const change of [
+    { resampling: undefined },
+    { pageSegmentationMode: undefined },
+    { resampling: "native" },
+    { resampling: "downsampled" },
+    { resampling: "generated" },
+    { resampling: null },
+    { resampling: { toString: () => "upsampled" } },
+    { pageSegmentationMode: 11 },
+    { outputWidth: 433 },
+    { outputHeight: 119 },
+    { outputWidth: 1801 },
+    { width: 85.5 },
+    { regionId: "pokemon-footer" },
+  ]) {
+    const invalid = structuredClone(evidence);
+    Object.assign(invalid.observations[0].regions![1], change);
+    expect(
+      () => parsePrintingEvidence(invalid, "event"),
+      JSON.stringify(change),
+    ).toThrow();
+  }
 });

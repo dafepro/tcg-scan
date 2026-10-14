@@ -9,7 +9,7 @@ import type { PrintingRegionEvidence } from "./printing-regions";
 
 /** Pinned configuration identity, not runtime verification of downloaded asset bytes. */
 export const PRINTING_READER_VERSION =
-  "tesseract-6.0.1-eng-4.0.0-oem1-psm11-dpi300-regions-v1";
+  "tesseract-6.0.1-eng-4.0.0-oem1-psm11+7-dpi300-regions-v2";
 
 /** Catalog metadata must describe the actual printed field, not a guessed alias. */
 export interface PrintingCandidate extends ReferenceMetadata {
@@ -143,61 +143,78 @@ export function parsePrintingObservation(
   const issues: string[] = [];
   if (input.rawText.length > PRINTING_LIMITS.rawText)
     issues.push("ocr-text-truncated");
-  const text = rawText.normalize("NFKC").replace(/[–−]/g, "-");
   const found = new Map<keyof PrintingFields, Set<string>>();
   function add(key: keyof PrintingFields, value: string) {
     const values = found.get(key) ?? new Set<string>();
     values.add(value);
     found.set(key, values);
   }
-  for (const match of text.matchAll(
-    /\b(1ST\s+EDITION|LIMITED\s+EDITION|UNLIMITED\s+EDITION)\b/gi,
-  ))
-    add("edition", compact(match[1]).replace(/\s+/g, " "));
+  // Joined OCR is display-only when source regions are available. Parse each
+  // region separately so whitespace cannot join partial tokens from unrelated
+  // crops (for example, "4" and "/102") into an identifier never read in one ROI.
+  // Legacy observations without region records retain their original parser.
+  const texts = input.regions?.length
+    ? input.regions.map((region) => {
+        const text = region.rawText ?? "";
+        if (
+          (region.rawTextTruncated || text.length > PRINTING_LIMITS.rawText) &&
+          !issues.includes("ocr-text-truncated")
+        )
+          issues.push("ocr-text-truncated");
+        return text.slice(0, PRINTING_LIMITS.rawText);
+      })
+    : [rawText];
+  for (const regionText of texts) {
+    const text = regionText.normalize("NFKC").replace(/[–−]/g, "-");
+    for (const match of text.matchAll(
+      /\b(1ST\s+EDITION|LIMITED\s+EDITION|UNLIMITED\s+EDITION)\b/gi,
+    ))
+      add("edition", compact(match[1]).replace(/\s+/g, " "));
 
-  if (input.game === "yugioh") {
-    // Accept actual hyphens only, with no speculative OCR correction or prefix expansion.
-    for (const match of text.matchAll(
-      /(?<![A-Z0-9])([A-Z0-9]{2,8})-([A-Z0-9]{1,8})(?![A-Z0-9])/g,
-    )) {
-      const marker = match[2].slice(0, 2);
-      const locale = LANGUAGES.has(marker) ? marker : undefined;
-      const collector = locale ? match[2].slice(2) : match[2];
-      // Preserve literal legacy/promo prefixes such as E003, Y10 and SV3.
-      // A digit-letter-digit OCR confusion such as 0O1 is not repaired.
-      if (!/^[A-Z]*\d{1,4}$/.test(collector)) continue;
-      add("setCode", match[0]);
-      add("collectorNumber", numberKey(collector));
-      if (locale) add("locale", localeKey(locale));
-    }
-  } else {
-    for (const match of text.matchAll(
-      /(?<![A-Za-z0-9])((?:TG|GG|SV|RC|H|SL|SH)?\d{1,4}[a-z]?)\s*\/\s*((?:TG|GG|SV|RC|H|SL|SH)?\d{1,4})(?![A-Za-z0-9])/g,
-    )) {
-      add("collectorNumber", numberKey(match[1]));
-      add("printedTotal", numberKey(match[2]));
-    }
-    // A printed abbreviation is accepted only beside a literal language marker,
-    // on a short isolated footer line. Symbols are never converted into set names.
-    for (const line of text.split(/\r?\n/).slice(0, 35)) {
-      const setLine = line
-        .trim()
-        .match(/^([A-Z][A-Z0-9]{1,5})\s*(?:[•·*|]\s*|\s+)([A-Z]{2,3})$/);
-      if (setLine && LANGUAGES.has(setLine[2])) {
-        add("setCode", setLine[1]);
-        add("locale", localeKey(setLine[2]));
+    if (input.game === "yugioh") {
+      // Accept actual hyphens only, with no speculative OCR correction or prefix expansion.
+      for (const match of text.matchAll(
+        /(?<![A-Z0-9])([A-Z0-9]{2,8})-([A-Z0-9]{1,8})(?![A-Z0-9])/g,
+      )) {
+        const marker = match[2].slice(0, 2);
+        const locale = LANGUAGES.has(marker) ? marker : undefined;
+        const collector = locale ? match[2].slice(2) : match[2];
+        // Preserve literal legacy/promo prefixes such as E003, Y10 and SV3.
+        // A digit-letter-digit OCR confusion such as 0O1 is not repaired.
+        if (!/^[A-Z]*\d{1,4}$/.test(collector)) continue;
+        add("setCode", match[0]);
+        add("collectorNumber", numberKey(collector));
+        if (locale) add("locale", localeKey(locale));
       }
-      if (input.game === "mtg") {
-        const collector = line
+    } else {
+      for (const match of text.matchAll(
+        /(?<![A-Za-z0-9])((?:TG|GG|SV|RC|H|SL|SH)?\d{1,4}[a-z]?)\s*\/\s*((?:TG|GG|SV|RC|H|SL|SH)?\d{1,4})(?![A-Za-z0-9])/g,
+      )) {
+        add("collectorNumber", numberKey(match[1]));
+        add("printedTotal", numberKey(match[2]));
+      }
+      // A printed abbreviation is accepted only beside a literal language marker,
+      // on a short isolated footer line. Symbols are never converted into set names.
+      for (const line of text.split(/\r?\n/).slice(0, 35)) {
+        const setLine = line
           .trim()
-          .match(
-            /^(?:([CURMLT])\s+)?(\d{1,4}[a-z]?)(?:\s*\/\s*(\d{1,4}))?(?:\s*([CURMLT]))?$/,
-          );
-        if (collector) {
-          add("collectorNumber", numberKey(collector[2]));
-          if (collector[3]) add("printedTotal", numberKey(collector[3]));
-          if (collector[1]) add("rarity", rarityNames[collector[1]]);
-          if (collector[4]) add("rarity", rarityNames[collector[4]]);
+          .match(/^([A-Z][A-Z0-9]{1,5})\s*(?:[•·*|]\s*|\s+)([A-Z]{2,3})$/);
+        if (setLine && LANGUAGES.has(setLine[2])) {
+          add("setCode", setLine[1]);
+          add("locale", localeKey(setLine[2]));
+        }
+        if (input.game === "mtg") {
+          const collector = line
+            .trim()
+            .match(
+              /^(?:([CURMLT])\s+)?(\d{1,4}[a-z]?)(?:\s*\/\s*(\d{1,4}))?(?:\s*([CURMLT]))?$/,
+            );
+          if (collector) {
+            add("collectorNumber", numberKey(collector[2]));
+            if (collector[3]) add("printedTotal", numberKey(collector[3]));
+            if (collector[1]) add("rarity", rarityNames[collector[1]]);
+            if (collector[4]) add("rarity", rarityNames[collector[4]]);
+          }
         }
       }
     }
@@ -221,7 +238,8 @@ function signature(fields: PrintingFields) {
     Object.entries(fields).sort(([a], [b]) => a.localeCompare(b)),
   );
 }
-function candidateRelation(
+/** Catalog compatibility only; never sufficient to accept a printing. */
+export function printingCandidateRelation(
   candidate: PrintingCandidate,
   fields: PrintingFields,
 ): "match" | "unknown" | "mismatch" {
@@ -332,7 +350,7 @@ export function resolvePrintingEvidence(
   const matches: PrintingCandidate[] = [];
   let incomplete = false;
   for (const candidate of input.candidates) {
-    const relation = candidateRelation(candidate, first.fields);
+    const relation = printingCandidateRelation(candidate, first.fields);
     if (relation === "unknown") incomplete = true;
     if (relation === "match") matches.push(candidate);
   }
@@ -556,9 +574,6 @@ export function createPrintingReader(
       oem: 1,
       config: {},
     });
-    await request(token, signal, "setParameters", {
-      params: { tessedit_pageseg_mode: "11", user_defined_dpi: "300" },
-    });
     check(token, signal);
     initialized = true;
   }
@@ -644,7 +659,8 @@ export function createPrintingReader(
       for (const region of regions) {
         check(token, signal);
         const crop = document.createElement("canvas");
-        // Downscale only. Upscaling cannot recover absent printing detail.
+        // Native ROI geometry is retained separately. A bounded 2× resample may
+        // help this reader consume small text; it never adds native evidence.
         crop.width = region.outputWidth;
         crop.height = region.outputHeight;
         try {
@@ -673,6 +689,14 @@ export function createPrintingReader(
             }, "image/png");
           });
           check(token, signal);
+          // Set each region explicitly: the persistent worker must not leak the
+          // single-line mode into a broad region or the next game's capture.
+          await request(token, signal, "setParameters", {
+            params: {
+              tessedit_pageseg_mode: String(region.pageSegmentationMode ?? 11),
+              user_defined_dpi: "300",
+            },
+          });
           const data = await request(
             token,
             signal,

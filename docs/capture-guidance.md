@@ -79,8 +79,10 @@ validated. `DEFAULT_PRINTING_DISCRIMINATORS` remains empty.
   saved quantity, finish, condition, price eligibility or collection totals.
 
 There is still no measured physical-user benefit or calibrated quality diagnosis.
-The existing literal parser, reader configuration, resolver thresholds and
-catalog-printing acceptance are unchanged.
+The advisory itself does not change literal parsing, reader configuration,
+resolver thresholds or catalog-printing acceptance. The separate bounded reader
+region update is described in [printing reader regions](printing-reader-regions.md);
+it preserves the resolver and catalog-printing acceptance gates.
 
 ## Receipt evidence disclosure and lifecycle
 

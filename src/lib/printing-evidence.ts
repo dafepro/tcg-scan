@@ -23,6 +23,8 @@ export interface PersistedPrintingRegion {
   height: number;
   outputWidth: number;
   outputHeight: number;
+  resampling?: "native" | "downsampled" | "upsampled";
+  pageSegmentationMode?: 7 | 11;
   sourceMinEdge: number;
   sampledPixels: number;
   edgeEnergy: number;
@@ -138,6 +140,12 @@ export function summarizePrintingEvidence(
               height: region.height,
               outputWidth: region.outputWidth,
               outputHeight: region.outputHeight,
+              ...(region.resampling === undefined
+                ? {}
+                : { resampling: region.resampling }),
+              ...(region.pageSegmentationMode === undefined
+                ? {}
+                : { pageSegmentationMode: region.pageSegmentationMode }),
               sourceMinEdge: region.sourceMinEdge,
               sampledPixels: region.metrics.sampledPixels,
               edgeEnergy: region.metrics.sharpness,
@@ -239,8 +247,40 @@ function parseRegions(value: unknown): PersistedPrintingRegion[] | undefined {
       height = dimension("height"),
       outputWidth = dimension("outputWidth"),
       outputHeight = dimension("outputHeight");
-    if (outputWidth > width || outputHeight > height)
-      throw new Error("Printing region cannot claim enlarged native detail.");
+    const resampling = raw.resampling;
+    const pageSegmentationMode = raw.pageSegmentationMode;
+    if (resampling === undefined && pageSegmentationMode === undefined) {
+      // Historical records may only claim the original downscale-only path.
+      if (outputWidth > width || outputHeight > height)
+        throw new Error("Printing region cannot claim enlarged native detail.");
+    } else {
+      if (
+        typeof resampling !== "string" ||
+        !["native", "downsampled", "upsampled"].includes(resampling) ||
+        (pageSegmentationMode !== 7 && pageSegmentationMode !== 11) ||
+        ![width, height, outputWidth, outputHeight].every(
+          Number.isSafeInteger,
+        ) ||
+        outputWidth > 1800
+      )
+        throw new Error("Invalid printing reader-input provenance.");
+      const scale =
+        resampling === "upsampled"
+          ? Math.min(2, 1800 / width)
+          : resampling === "downsampled"
+            ? Math.min(1, 1800 / width)
+            : 1;
+      if (
+        (resampling === "upsampled" &&
+          (scale <= 1 ||
+            raw.regionId !== "pokemon-lower-right-identifier" ||
+            pageSegmentationMode !== 7)) ||
+        (resampling === "downsampled" && scale >= 1) ||
+        outputWidth !== Math.max(1, Math.round(width * scale)) ||
+        outputHeight !== Math.max(1, Math.round(height * scale))
+      )
+        throw new Error("Invalid printing resampling dimensions.");
+    }
     return {
       regionId: text(raw.regionId, 100),
       registryVersion: text(raw.registryVersion, 100),
@@ -250,6 +290,12 @@ function parseRegions(value: unknown): PersistedPrintingRegion[] | undefined {
       height,
       outputWidth,
       outputHeight,
+      ...(resampling === undefined
+        ? {}
+        : { resampling: resampling as PersistedPrintingRegion["resampling"] }),
+      ...(pageSegmentationMode === undefined
+        ? {}
+        : { pageSegmentationMode: pageSegmentationMode as 7 | 11 }),
       sourceMinEdge: dimension("sourceMinEdge"),
       sampledPixels: Number(raw.sampledPixels),
       edgeEnergy: fraction("edgeEnergy"),

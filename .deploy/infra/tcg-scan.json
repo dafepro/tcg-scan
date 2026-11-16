@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "app": "tcg-scan",
+  "environment": "production",
+  "settings": {
+    "htmlHandling": "auto-trailing-slash"
+  }
+}
